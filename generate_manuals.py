@@ -18,18 +18,18 @@ LANGUAGES = {
         "participants": "Adding Participants",
         "participants_text": "In the 'Log Catch' section, enter a participant's name and click 'Add Participant'. Names must be unique. The participant list updates on the right and is read-only.",
         "catches": "Logging Catches",
-        "catches_text": "Select a participant, enter the weight (kg, mandatory), number of catches (default 1, min 1), length (cm, optional), and fish type (optional). Click 'Log Catch'. For multiple catches (>1), length and type are set to empty and only count toward total weight and catch count. Weight and length must be positive numbers (e.g., 1.5 or 1,5 in French/German/Luxembourgish). Live rankings update automatically.",
+        "catches_text": "Select a participant, enter the weight (g, mandatory), number of catches (default 1, min 1), length (cm, optional), and fish type (optional). Click 'Log Catch'. For multiple catches (>1), length and type are set to empty and only count toward total weight and catch count. Weight and length must be positive numbers (e.g., 1.5 or 1,5 in French/German/Luxembourgish). Live rankings update automatically.",
         "reports": "Generating Reports",
         "reports_text": "Click 'Generate Report' to create a PDF with event summaries and participant details, including number of catches. Saved as '[date]_[event_name].pdf' (e.g., '20250408_Spring_Fishing.pdf').",
         "export_import": "Exporting and Importing Events",
-        "export_import_text": "Use 'Export Event' to save event data as a JSON file. Use 'Import Event' to load a previous event. Version 1.0 imports set number of catches to 1. Ensure the file version matches the app version (1.1).",
+        "export_import_text": "Use 'Export Event' to save event data as a JSON file. Use 'Import Event' to load a previous event. Version 1.0 imports set number of catches to 1. Ensure the file version matches the app version (1.2).",
         "reset": "Resetting the Event",
         "reset_text": "Click 'Reset Event' to clear all data. Confirm with 'Yes' (default, press Enter) or 'No'. Backups are saved in '~/FescherfrennData/backups'.",
         "troubleshoot": "Troubleshooting",
         "troubleshoot_text": "If the app fails to save, check folder permissions or run as administrator. Errors are logged to 'fescherfrenn.log'. View the manual via the 'Help' button. If 'logo.ico' is missing, the app uses the default icon.",
         "contact": "Contact",
         "contact_text": "For support, contact Robert Androvics at fescherfrenn@outlook.com.",
-        "copyright": "© 2025 Fëscherfrënn Stengefort Fishing Competition Register"
+        "copyright": "© 2010 Fëscherfrënn Stengefort Fishing Competition Register"
     },
     "French": {
         "title": "Manuel d'Utilisateur du Registre de Compétition de Pêche Fëscherfrënn Stengefort",
@@ -41,18 +41,18 @@ LANGUAGES = {
         "participants": "Ajouter des participants",
         "participants_text": "Dans la section 'Enregistrer une prise', entrez le nom d'un participant et cliquez sur 'Ajouter un participant'. Les noms doivent être uniques. La liste des participants est mise à jour à droite et est en lecture seule.",
         "catches": "Enregistrer des prises",
-        "catches_text": "Sélectionnez un participant, entrez le poids (kg, obligatoire), le nombre de prises (par défaut 1, min 1), la longueur (cm, facultatif) et le type de poisson (facultatif). Cliquez sur 'Enregistrer une prise'. Pour plusieurs prises (>1), la longueur et le type sont définis comme vides et ne comptent que pour le poids total et le nombre de prises. Le poids et la longueur doivent être des nombres positifs (ex. 1,5). Les classements en direct sont mis à jour automatiquement.",
+        "catches_text": "Sélectionnez un participant, entrez le poids (g, obligatoire), le nombre de prises (par défaut 1, min 1), la longueur (cm, facultatif) et le type de poisson (facultatif). Cliquez sur 'Enregistrer une prise'. Pour plusieurs prises (>1), la longueur et le type sont définis comme vides et ne comptent que pour le poids total et le nombre de prises. Le poids et la longueur doivent être des nombres positifs (ex. 1,5). Les classements en direct sont mis à jour automatiquement.",
         "reports": "Générer des rapports",
         "reports_text": "Cliquez sur 'Générer le rapport' pour créer un PDF avec les résumés de l'événement et les détails des participants, y compris le nombre de prises. Enregistré sous '[date]_[nom_événement].pdf' (ex. '20250408_Pêche_de_Printemps.pdf').",
         "export_import": "Exporter et importer des événements",
-        "export_import_text": "Utilisez 'Exporter l'événement' pour sauvegarder les données de l'événement en fichier JSON. Utilisez 'Importer l'événement' pour charger un événement précédent. Les importations de la version 1.0 définissent le nombre de prises à 1. Assurez-vous que la version du fichier correspond à celle de l'application (1.1).",
+        "export_import_text": "Utilisez 'Exporter l'événement' pour sauvegarder les données de l'événement en fichier JSON. Utilisez 'Importer l'événement' pour charger un événement précédent. Les importations de la version 1.0 définissent le nombre de prises à 1. Assurez-vous que la version du fichier correspond à celle de l'application (1.2).",
         "reset": "Réinitialiser l'événement",
         "reset_text": "Cliquez sur 'Réinitialiser l'événement' pour effacer toutes les données. Confirmez avec 'Oui' (par défaut, appuyez sur Entrée) ou 'Non'. Les sauvegardes sont stockées dans '~/FescherfrennData/backups'.",
         "troubleshoot": "Dépannage",
         "troubleshoot_text": "Si l'application ne parvient pas à enregistrer, vérifiez les permissions des dossiers ou exécutez en tant qu'administrateur. Les erreurs sont consignées dans 'fescherfrenn.log'. Consultez le manuel via le bouton 'Aide'. Si 'logo.ico' est manquant, l'application utilise l'icône par défaut.",
         "contact": "Contact",
         "contact_text": "Pour toute assistance, contactez Robert Androvics à fescherfrenn@outlook.com.",
-        "copyright": "© 2025 Registre de Compétition de Pêche Fëscherfrënn Stengefort"
+        "copyright": "© 2010 Registre de Compétition de Pêche Fëscherfrënn Stengefort"
     },
     "German": {
         "title": "Benutzerhandbuch für das Fëscherfrënn Stengefort Angelwettbewerb Register",
@@ -64,18 +64,18 @@ LANGUAGES = {
         "participants": "Teilnehmer hinzufügen",
         "participants_text": "Geben Sie im Abschnitt 'Fang protokollieren' den Namen eines Teilnehmers ein und klicken Sie auf 'Teilnehmer hinzufügen'. Namen müssen eindeutig sein. Die Teilnehmerliste wird rechts aktualisiert und ist schreibgeschützt.",
         "catches": "Fänge protokollieren",
-        "catches_text": "Wählen Sie einen Teilnehmer, geben Sie das Gewicht (kg, erforderlich), die Anzahl der Fänge (Standard 1, min 1), die Länge (cm, optional) und die Fischart (optional) ein. Klicken Sie auf 'Fang protokollieren'. Bei mehreren Fängen (>1) werden Länge und Typ leer gesetzt und zählen nur für Gesamtgewicht und Fangzahl. Gewicht und Länge müssen positive Zahlen sein (z. B. 1,5). Live-Rankings werden automatisch aktualisiert.",
+        "catches_text": "Wählen Sie einen Teilnehmer, geben Sie das Gewicht (g, erforderlich), die Anzahl der Fänge (Standard 1, min 1), die Länge (cm, optional) und die Fischart (optional) ein. Klicken Sie auf 'Fang protokollieren'. Bei mehreren Fängen (>1) werden Länge und Typ leer gesetzt und zählen nur für Gesamtgewicht und Fangzahl. Gewicht und Länge müssen positive Zahlen sein (z. B. 1,5). Live-Rankings werden automatisch aktualisiert.",
         "reports": "Berichte erstellen",
         "reports_text": "Klicken Sie auf 'Bericht erstellen', um ein PDF mit Veranstaltungszusammenfassungen und Teilnehmerdetails, einschließlich der Anzahl der Fänge, zu erstellen. Gespeichert als '[datum]_[veranstaltungsname].pdf' (z. B. '20250408_Frühlingsangeln.pdf').",
         "export_import": "Veranstaltungen exportieren und importieren",
-        "export_import_text": "Verwenden Sie 'Veranstaltung exportieren', um Veranstaltungsdaten als JSON-Datei zu speichern. Verwenden Sie 'Veranstaltung importieren', um eine frühere Veranstaltung zu laden. Importe der Version 1.0 setzen die Anzahl der Fänge auf 1. Stellen Sie sicher, dass die Dateiversion mit der App-Version (1.1) übereinstimmt.",
+        "export_import_text": "Verwenden Sie 'Veranstaltung exportieren', um Veranstaltungsdaten als JSON-Datei zu speichern. Verwenden Sie 'Veranstaltung importieren', um eine frühere Veranstaltung zu laden. Importe der Version 1.0 setzen die Anzahl der Fänge auf 1. Stellen Sie sicher, dass die Dateiversion mit der App-Version (1.2) übereinstimmt.",
         "reset": "Veranstaltung zurücksetzen",
         "reset_text": "Klicken Sie auf 'Veranstaltung zurücksetzen', um alle Daten zu löschen. Bestätigen Sie mit 'Ja' (Standard, drücken Sie Enter) oder 'Nein'. Sicherungen werden in '~/FescherfrennData/backups' gespeichert.",
         "troubleshoot": "Fehlerbehebung",
-        "troubleshoot_text": "Wenn die Anwendung nicht speichert, überprüfen Sie die Ordnerberechtigungen oder führen Sie sie als Administrator aus. Fehler werden in 'fescherfrenn.log' protokolléiert. Sehen Sie das Handbuch über die Schaltfläche 'Hilfe' ein. Wenn 'logo.ico' fehlt, verwendet die Anwendung das Standardsymbol.",
+        "troubleshoot_text": "Wenn die Anwendung nicht speichert, überprüfen Sie die Ordnerberechtigungen oder führen Sie sie als Administrator aus. Fehler werden in 'fescherfrenn.log' protokolliert. Sehen Sie das Handbuch über die Schaltfläche 'Hilfe' ein. Wenn 'logo.ico' fehlt, verwendet die Anwendung das Standardsymbol.",
         "contact": "Kontakt",
         "contact_text": "Für Unterstützung wenden Sie sich an Robert Androvics unter fescherfrenn@outlook.com.",
-        "copyright": "© 2025 Fëscherfrënn Stengefort Angelwettbewerb Register"
+        "copyright": "© 2010 Fëscherfrënn Stengefort Angelwettbewerb Register"
     },
     "Luxembourgish": {
         "title": "Benotzerhandbuch fir den Fëscherfrënn Stengefort Fëschkonkurrenz Register",
@@ -87,18 +87,18 @@ LANGUAGES = {
         "participants": "Participanten dobäisetzen",
         "participants_text": "Am Abschnitt 'Fang opzeechnen' gitt den Numm vun engem Participant an a klickt op 'Participant dobäisetzen'. Nimm mussen eenzegaarteg sinn. D'Participantenlëscht gëtt riets aktualiséiert a ass nëmme liesbar.",
         "catches": "Fäng opzeechnen",
-        "catches_text": "Wielt e Participant, gitt d'Gewiicht (kg, obligatoresch), d'Zuel vun de Fäng (Standard 1, min 1), d'Längt (cm, fakultativ) an d'Fëschzort (fakultativ) an. Klickt op 'Fang opzeechnen'. Fir méi Fäng (>1) ginn d'Längt an d'Zort eidel gesat a zielen nëmme fir d'Gesamtgewiicht an d'Zuel vun de Fäng. Gewiicht an Längt mussen positiv Zuele sinn (z. B. 1,5). Live-Klassementer ginn automatesch aktualiséiert.",
+        "catches_text": "Wielt e Participant, gitt d'Gewiicht (g, obligatoresch), d'Zuel vun de Fäng (Standard 1, min 1), d'Längt (cm, fakultativ) an d'Fëschzort (fakultativ) an. Klickt op 'Fang opzeechnen'. Fir méi Fäng (>1) ginn d'Längt an d'Zort eidel gesat a zielen nëmme fir d'Gesamtgewiicht an d'Zuel vun de Fäng. Gewiicht an Längt mussen positiv Zuele sinn (z. B. 1,5). Live-Klassementer ginn automatesch aktualiséiert.",
         "reports": "Rapporten erstellen",
         "reports_text": "Klickt op 'Rapport erstellen' fir e PDF mat Event Resuméen an Participant Detailer ze kreéieren, inklusiv der Zuel vun de Fäng. Gespäichert als '[datum]_[numm_event].pdf' (z. B. '20250408_Fréijoersfëschen.pdf').",
         "export_import": "Eventer exportéieren an importéieren",
-        "export_import_text": "Benotzt 'Event exportéieren' fir Event-Donnéeën als JSON-Datei ze späicheren. Benotzt 'Event importéieren' fir e fréieren Event ze lueden. Importe vun der Versioun 1.0 setzen d'Zuel vun de Fäng op 1. Vergewëssert Iech, dass d'Dateiversioun mat der App-Versioun (1.1) iwwereneestëmmt.",
+        "export_import_text": "Benotzt 'Event exportéieren' fir Event-Donnéeën als JSON-Datei ze späicheren. Benotzt 'Event importéieren' fir e fréieren Event ze lueden. Importe vun der Versioun 1.0 setzen d'Zuel vun de Fäng op 1. Vergewëssert Iech, dass d'Dateiversioun mat der App-Versioun (1.2) iwwereneestëmmt.",
         "reset": "Event zrécksetzen",
         "reset_text": "Klickt op 'Event zrécksetzen' fir all Donnéeën ze läschen. Bestätegt mat 'Jo' (Standard, dréckt Enter) oder 'Nee'. Backups ginn an '~/FescherfrennData/backups' gespäichert.",
         "troubleshoot": "Feelerbehandlung",
         "troubleshoot_text": "Wann d'Applikatioun net späichert, iwwerpréift d'Ordnerberechtigungen oder féiert se als Administrateur aus. Feeler ginn an 'fescherfrenn.log' protokolléiert. Kuckt d'Handbuch iwwer de Knäppchen 'Hëllef'. Wann 'logo.ico' feelt, benotzt d'Applikatioun d'Standard-Ikon.",
         "contact": "Kontakt",
         "contact_text": "Fir Ënnerstëtzung, kontaktéiert de Robert Androvics op fescherfrenn@outlook.com.",
-        "copyright": "© 2025 Fëscherfrënn Stengefort Fëschkonkurrenz Register"
+        "copyright": "© 2010 Fëscherfrënn Stengefort Fëschkonkurrenz Register"
     }
 }
 
