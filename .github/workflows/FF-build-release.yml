@@ -1,0 +1,113 @@
+name: FF Build & Release
+
+# Pushing a tag like v2.1 triggers a full build + draft release.
+# workflow_dispatch lets you run the build by hand from the Actions tab
+# (handy for testing changes to this file without creating a release).
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed by the release step to attach the binaries
+
+jobs:
+  # ---------------------------------------------------------------- Windows
+  build-windows:
+    name: Build Windows .exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pyinstaller reportlab tkcalendar
+
+      - name: Build .exe
+        shell: bash
+        run: |
+          # Assemble --add-data flags only for files that actually exist.
+          # This keeps the workflow working for v1.2 (no translations.json)
+          # and v2.x alike.
+          ARGS=""
+          for f in logo.png logo.ico translations.json manual_translations.json; do
+            [ -f "$f" ] && ARGS="$ARGS --add-data $f;."
+          done
+          ICON_ARG=""
+          [ -f logo.ico ] && ICON_ARG="--icon logo.ico"
+          pyinstaller --onedir --windowed --name Fescherfrenn \
+            $ICON_ARG $ARGS \
+            --hidden-import babel.numbers \
+            fescherfrenn.py
+
+      - name: Package
+        shell: bash
+        run: |
+          cd dist
+          7z a "Fescherfrenn-${{ github.ref_name }}-windows.zip" Fescherfrenn/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: dist/Fescherfrenn-*-windows.zip
+
+  # ----------------------------------------------------------------- macOS
+  build-macos:
+    name: Build macOS .app
+    runs-on: macos-latest   # currently Apple Silicon (arm64)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pyinstaller reportlab tkcalendar
+
+      - name: Build .app
+        run: |
+          ARGS=""
+          for f in logo.png translations.json manual_translations.json; do
+            [ -f "$f" ] && ARGS="$ARGS --add-data $f:."
+          done
+          pyinstaller --windowed --name Fescherfrenn \
+            $ARGS \
+            --hidden-import babel.numbers \
+            fescherfrenn.py
+
+      - name: Package
+        run: |
+          cd dist
+          zip -r "Fescherfrenn-${{ github.ref_name }}-macos.zip" Fescherfrenn.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: dist/Fescherfrenn-*-macos.zip
+
+  # --------------------------------------------------------------- Release
+  release:
+    name: Create draft release
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')   # only on tag pushes
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          merge-multiple: true
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ./artifacts/Fescherfrenn-*-windows.zip
+            ./artifacts/Fescherfrenn-*-macos.zip
+          generate_release_notes: true
+          draft: true        # leaves the release as a draft for review
+          prerelease: false
