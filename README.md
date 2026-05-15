@@ -1,7 +1,7 @@
 # Fëscherfrënn Stengefort — Fishing Competition Register
 
 A desktop application for registering participants, logging catches, and generating
-result reports for the fishing competitions of **Fëscherfrënn Stengefort**.
+result reports for the fishing competitions of **Fëscherfrënn Stengefort 2010 a.s.b.l.**.
 
 It is built with a deliberately simple, large-font interface so that it can be
 operated comfortably by non-technical users during a live event.
