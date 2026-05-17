@@ -10,7 +10,7 @@ operated by non-technical users during a live event.
 
 - **Languages:** English, French, German, Luxembourgish
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 2.0
+- **Version:** 2.1
 - **License:** MIT
 
 ---
@@ -26,11 +26,14 @@ operated by non-technical users during a live event.
   window
 - Edit or delete any catch record after the fact, from a dedicated
   **Edit Catches** window — no need to reset the event to fix a typo
-- PDF reports (landscape) include:
-  - a summary table per session, sorted by total weight
-  - an individual page per person, per session
-  - a final **combined ranking across all sessions**, where each
-    person-per-session is its own ranked row
+- **Manche-scoped PDF reports**, with a settings panel that lets you choose
+  what to include:
+  - the Event Summary for the selected session (always included)
+  - the participant-by-participant detail pages (optional)
+  - the Combined Ranking across all four sessions (optional, only available on
+    the Final)
+- Each session's report is saved to its own PDF, so the per-manche results
+  produced on the day are preserved alongside the final wrap-up
 - Export / import an event as a JSON file
 - Automatic backups on every save (`~/FescherfrennData/backups`)
 - Built-in multilingual user manual (**Help** button)
@@ -95,17 +98,30 @@ Notes:
    screen drop-down, move participants from the roster into the session.
 4. Back on the main screen, with the desired Manche still selected, log
    catches as they come in (weight in grams; length and fish type optional).
-5. After each session, switch the Manche drop-down to the next one and
-   repeat.
+5. After each Manche, click **Generate Report** to produce a single-session
+   PDF; switch the drop-down to the next Manche and repeat.
 6. Use **Edit Catches** to correct an erroneous entry.
-7. When the event is over (including the Final), click **Generate Report**.
+7. When the Final is over, switch to **Final**, tick **Combined Ranking - All
+   Sessions** (and **Individual Reports** if you want each participant's own
+   page), then **Generate Report** to produce the wrap-up PDF.
+
+Generated PDFs are named after the session:
+
+```
+20260510_Stengefort_Open_manche1.pdf
+20260510_Stengefort_Open_manche2.pdf
+20260510_Stengefort_Open_manche3.pdf
+20260510_Stengefort_Open_final.pdf
+```
+
+so a Final report does not overwrite the earlier per-manche files.
 
 ---
 
 ## Data and backups
 
 - Each event is stored in its own folder named `YYYYMMDD_EventName`, containing
-  a JSON file with the same name.
+  a JSON file with the same name and the generated PDFs.
 - Every save also writes a timestamped backup to
   `~/FescherfrennData/backups`.
 - Errors are logged to `fescherfrenn.log` next to the application.
@@ -130,23 +146,39 @@ Notes:
 
 ## Changelog
 
+### v2.1
+- **Manche-scoped reports.** Generating the report from Manche 1, 2 or 3
+  produces a PDF for just that session. The Final's report covers the Final
+  alone unless additional sections are explicitly enabled.
+- **Report Settings panel** on the main screen with two toggles:
+  *Individual Reports* (off by default) and *Combined Ranking - All Sessions*
+  (off by default, available only when the Final is selected). The Event
+  Summary is always included.
+- **Per-manche output filenames** (`_manche1.pdf`, `_manche2.pdf`,
+  `_manche3.pdf`, `_final.pdf`), so the report produced after each session is
+  preserved next to the others rather than overwritten.
+- **`repeatRows=1`** added to long tables so the column headers reappear on
+  every continuation page (matters at 30 participants per session).
+- Section order inside a Final report when all options are enabled:
+  Event Summary → Combined Ranking → Individual Reports.
+
 ### v2.0
-- **Competition structure of 3 Manches + Final.** A drop-down on the main
-  screen selects the active session; the live rankings, catch log and
-  participants list filter to that session.
-- **Manage Participants window** with separate panes for the full roster and
-  the participants assigned to the current session. Add, edit, rename and
-  remove from either side; selection-and-button rather than drag-and-drop.
-- **Edit Catches window** to correct or delete recorded catches without
-  resetting the event.
-- **Combined ranking across all sessions** appended to the PDF report. Each
+- Competition structure of 3 Manches + Final, with a drop-down on the main
+  screen that filters the live rankings, the catch log and the participants
+  list to the active session.
+- Manage Participants window with separate panes for the full roster and the
+  participants assigned to the current session. Add, edit, rename and remove
+  from either side; selection-and-button rather than drag-and-drop.
+- Edit Catches window to correct or delete recorded catches without resetting
+  the event.
+- Combined ranking across all sessions appended to the PDF report. Each
   person-per-session is a separate row; the table is one pooled list sorted by
   total weight.
-- **Report layout** moved to landscape with wider columns, header shading,
+- Report layout moved to landscape with wider columns, header shading,
   right-aligned numeric columns and per-session summary blocks.
-- **Translations now live in `translations.json`** rather than inside the
-  source, which makes the source file substantially smaller and lets the
-  translations be edited without rebuilding.
+- Translations now live in `translations.json` rather than inside the source,
+  which makes the source file substantially smaller and lets the translations
+  be edited without rebuilding.
 - The `.json` data files use UTF-8 with native characters (no `\u00e9`-style
   escapes), so they are easier to read and edit by hand.
 

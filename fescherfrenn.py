@@ -20,7 +20,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "1.2"
+APP_VERSION = "2.1"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -253,6 +253,10 @@ class FishingApp:
             self.catch_name = None
             self.catch_name_var = None
             self.report_btn = None
+            # Report settings: which sections to include in the generated PDF.
+            self.include_individual_var = tk.BooleanVar(value=False)
+            self.include_combined_var = tk.BooleanVar(value=False)
+            self.combined_chk = None
             self.reset_btn = None
             self.export_btn = None
             self.import_btn = None
@@ -449,6 +453,18 @@ class FishingApp:
         self.manche_participants_list.bind(
             "<Configure>", lambda e: participants_canvas.configure(scrollregion=participants_canvas.bbox("all")))
         self.update_manche_participants_list()
+
+        # -- Report settings (which sections to include in the PDF) --
+        settings_frame = ttk.LabelFrame(right_frame, text=L["report_settings_label"], padding=5)
+        settings_frame.pack(fill="x", pady=3)
+        ttk.Label(settings_frame, text=f'\u2713 {L["chk_event_summary"]}',
+                  font=("Arial", self.font_size - 2, "italic"), foreground="gray").pack(anchor="w", pady=2)
+        ttk.Checkbutton(settings_frame, text=L["chk_individual"],
+                        variable=self.include_individual_var).pack(anchor="w", pady=2)
+        self.combined_chk = ttk.Checkbutton(
+            settings_frame, text=L["chk_combined"], variable=self.include_combined_var)
+        self.combined_chk.pack(anchor="w", pady=2)
+        self._update_combined_state()
 
         # -- Footer --
         footer_frame = ttk.Frame(self.main_frame)
@@ -669,6 +685,17 @@ class FishingApp:
     def on_manche_changed(self, event=None):
         self.current_manche = display_to_key(self.lang, self.manche_var.get())
         self.refresh_manche_view()
+        self._update_combined_state()
+
+    def _update_combined_state(self):
+        """Combined ranking is only meaningful on the Final."""
+        if self.combined_chk is None:
+            return
+        if self.current_manche == "final":
+            self.combined_chk.config(state="normal")
+        else:
+            self.combined_chk.config(state="disabled")
+            self.include_combined_var.set(False)
 
     def refresh_manche_view(self):
         L = LANGUAGES[self.lang]
@@ -1097,15 +1124,22 @@ class FishingApp:
         if not self.data["participants"]:
             messagebox.showerror("Error", L["error"])
             return
+        sk = self.current_manche
+        sess = self.data["sessions"][sk]
+        if not sess["participants"]:
+            messagebox.showinfo("", L["no_manche_participants"])
+            return
+
         try:
             event = self.data["event"]
             event_name_file = str(event.get("name", "event")).replace(" ", "_")
             event_name_display = str(event.get("name", "event"))
+            event_location = str(event.get("location", "Unknown Location"))
             event_date = str(event.get("date", datetime.now().strftime("%d/%m/%Y")))
             date_obj = datetime.strptime(event_date, "%d/%m/%Y")
             date_str = date_obj.strftime("%Y%m%d")
             folder_name = f"{date_str}_{event_name_file}"
-            filename = f"{folder_name}/{folder_name}.pdf"
+            filename = f"{folder_name}/{folder_name}_{sk}.pdf"
 
             try:
                 os.makedirs(folder_name, exist_ok=True)
@@ -1127,20 +1161,19 @@ class FishingApp:
             center_style.alignment = 1
             story = []
 
+            sess_label = key_to_display(self.lang, sk)
             logo_path = "logo.png"
             if os.path.exists(logo_path):
                 logo = Image(logo_path, width=1 * inch, height=1 * inch)
                 logo.hAlign = "LEFT"
                 story.append(logo)
                 story.append(Spacer(1, 12))
-
-            event_location = str(event.get("location", "Unknown Location"))
             story.append(Paragraph(L["summary_report"], styles["Title"]))
             story.append(Spacer(1, 12))
             story.append(Paragraph(f"{event_name_display} - {event_location} - {event_date}", center_style))
             story.append(Spacer(1, 12))
 
-            # ---- One summary table per session ----
+            # === Event Summary - current manche only ===
             common_style = [
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
                 ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
@@ -1155,90 +1188,137 @@ class FishingApp:
             ]
             col_widths = [32, 150, 95, 95, 110, 60, 75, 65]
 
-            grand_participants = 0
-            grand_catches = 0
-            grand_weight = 0
-            session_summaries = []
+            story.append(Paragraph(f'{L["summary_report"]} - {sess_label}', center_style))
+            story.append(Spacer(1, 6))
+            table = [[
+                Paragraph("#", normal_style),
+                Paragraph(L["name"].rstrip(":"), normal_style),
+                Paragraph(L["table_club"], normal_style),
+                Paragraph(L["table_category"], normal_style),
+                Paragraph(L["table_remark"], normal_style),
+                Paragraph(L["table_participants"], normal_style),
+                Paragraph(L["table_total_weight"], normal_style),
+                Paragraph(L["table_longest_fish"], normal_style),
+            ]]
+            names_in_sess = sess["participants"]
+            totals = {n: sum(c["weight"] for c in sess["catches"].get(n, []))
+                      for n in names_in_sess}
+            sorted_names = sorted(names_in_sess, key=lambda n: totals[n], reverse=True)
 
-            for sk in SESSION_KEYS:
-                sess = self.data["sessions"][sk]
-                if not sess["participants"] and not any(sess["catches"].values()):
-                    continue
-                sess_label = key_to_display(self.lang, sk)
-                story.append(Paragraph(f'{L["summary_report"]} - {sess_label}', center_style))
-                story.append(Spacer(1, 6))
+            sess_total_catches = 0
+            sess_total_weight = 0
+            for rank_i, name in enumerate(sorted_names, 1):
+                catches = sess["catches"].get(name, [])
+                total_catches = sum(c["num_catches"] for c in catches) if catches else 0
+                total_weight = sum(c["weight"] for c in catches) if catches else 0
+                longest = max((c["length"] for c in catches if c["length"] is not None), default=0) if catches else 0
+                sess_total_catches += total_catches
+                sess_total_weight += total_weight
+                info = self.data["participants"].get(name, {})
+                cat_disp = L["category_options"].get(info.get("category", ""), info.get("category", ""))
+                table.append([
+                    Paragraph(str(rank_i), normal_style),
+                    Paragraph(str(name), normal_style),
+                    Paragraph(info.get("club", "") or "", normal_style),
+                    Paragraph(cat_disp, normal_style),
+                    Paragraph(info.get("remark", "") or "", normal_style),
+                    Paragraph(str(total_catches), normal_style),
+                    Paragraph(self.fmt_weight(total_weight), normal_style),
+                    Paragraph(f"{longest}" if longest else "", normal_style),
+                ])
+            story.append(Table(table, colWidths=col_widths, style=common_style, repeatRows=1))
+            story.append(Spacer(1, 8))
+            summary_text = (f"{L['summary']} {len(names_in_sess)} {L['summary_participants']}, "
+                            f"{sess_total_catches} {L['summary_total_catches']}, "
+                            f"{self.fmt_weight(sess_total_weight)} {L['summary_total_weight']}")
+            story.append(Paragraph(summary_text, styles["Normal"]))
 
-                table = [[
-                    Paragraph("#", normal_style),
-                    Paragraph(L["name"].rstrip(":"), normal_style),
-                    Paragraph(L["table_club"], normal_style),
-                    Paragraph(L["table_category"], normal_style),
-                    Paragraph(L["table_remark"], normal_style),
-                    Paragraph(L["table_participants"], normal_style),
-                    Paragraph(L["table_total_weight"], normal_style),
-                    Paragraph(L["table_longest_fish"], normal_style),
-                ]]
-                names_in_sess = sess["participants"]
-                totals = {n: sum(c["weight"] for c in sess["catches"].get(n, []))
-                          for n in names_in_sess}
-                sorted_names = sorted(names_in_sess, key=lambda n: totals[n], reverse=True)
+            include_combined = (sk == "final" and self.include_combined_var.get())
+            include_individual = self.include_individual_var.get()
 
-                sess_total_catches = 0
-                sess_total_weight = 0
-                for rank_i, name in enumerate(sorted_names, 1):
-                    catches = sess["catches"].get(name, [])
-                    total_catches = sum(c["num_catches"] for c in catches) if catches else 0
-                    total_weight = sum(c["weight"] for c in catches) if catches else 0
-                    longest = max((c["length"] for c in catches if c["length"] is not None), default=0) if catches else 0
-                    sess_total_catches += total_catches
-                    sess_total_weight += total_weight
-                    info = self.data["participants"].get(name, {})
-                    cat_disp = L["category_options"].get(info.get("category", ""), info.get("category", ""))
-                    table.append([
-                        Paragraph(str(rank_i), normal_style),
-                        Paragraph(str(name), normal_style),
-                        Paragraph(info.get("club", "") or "", normal_style),
-                        Paragraph(cat_disp, normal_style),
-                        Paragraph(info.get("remark", "") or "", normal_style),
-                        Paragraph(str(total_catches), normal_style),
-                        Paragraph(self.fmt_weight(total_weight), normal_style),
-                        Paragraph(f"{longest}" if longest else "", normal_style),
-                    ])
-                story.append(Table(table, colWidths=col_widths, style=common_style))
-                story.append(Spacer(1, 8))
-                summary_text = (f"{L['summary']} {len(names_in_sess)} {L['summary_participants']}, "
-                                f"{sess_total_catches} {L['summary_total_catches']}, "
-                                f"{self.fmt_weight(sess_total_weight)} {L['summary_total_weight']}")
-                story.append(Paragraph(summary_text, styles["Normal"]))
-                story.append(PageBreak())
+            # === Combined Ranking - All Sessions (Final + checkbox only) ===
+            if include_combined:
+                combined_rows = []
+                grand_catches = 0
+                grand_weight = 0
+                for ssk in SESSION_KEYS:
+                    ssess = self.data["sessions"][ssk]
+                    ssess_label = key_to_display(self.lang, ssk)
+                    for n in ssess["participants"]:
+                        cc = ssess["catches"].get(n, [])
+                        if not cc:
+                            continue
+                        tc = sum(c["num_catches"] for c in cc)
+                        tw = sum(c["weight"] for c in cc)
+                        lg = max((c["length"] for c in cc if c["length"] is not None), default=0)
+                        combined_rows.append((n, ssess_label, tc, tw, lg))
+                        grand_catches += tc
+                        grand_weight += tw
+                if combined_rows:
+                    combined_rows.sort(key=lambda r: r[3], reverse=True)
+                    story.append(PageBreak())
+                    story.append(Paragraph(L["combined_report"], styles["Title"]))
+                    story.append(Spacer(1, 8))
+                    story.append(Paragraph(f"{event_name_display} - {event_location} - {event_date}", center_style))
+                    story.append(Spacer(1, 12))
+                    comb_table = [[
+                        Paragraph("#", normal_style),
+                        Paragraph(L["table_participant_name"], normal_style),
+                        Paragraph(L["session_column"], normal_style),
+                        Paragraph(L["table_participants"], normal_style),
+                        Paragraph(L["table_total_weight"], normal_style),
+                        Paragraph(L["table_longest_fish"], normal_style),
+                    ]]
+                    for rank_i, (n, slabel, tc, tw, lg) in enumerate(combined_rows, 1):
+                        comb_table.append([
+                            Paragraph(str(rank_i), normal_style),
+                            Paragraph(n, normal_style),
+                            Paragraph(slabel, normal_style),
+                            Paragraph(str(tc), normal_style),
+                            Paragraph(self.fmt_weight(tw), normal_style),
+                            Paragraph(f"{lg}" if lg else "", normal_style),
+                        ])
+                    comb_widths = [40, 200, 110, 90, 110, 90]
+                    comb_style = [
+                        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 10),
+                        ("LEADING", (0, 0), (-1, -1), 12),
+                        ("ALIGN", (0, 1), (0, -1), "CENTER"),
+                        ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
+                        ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
+                    ]
+                    story.append(Table(comb_table, colWidths=comb_widths, style=comb_style, repeatRows=1))
+                    story.append(Spacer(1, 8))
+                    grand_text = (f"{L['summary']} {len(self.data['participants'])} {L['summary_participants']}, "
+                                  f"{grand_catches} {L['summary_total_catches']}, "
+                                  f"{self.fmt_weight(grand_weight)} {L['summary_total_weight']}")
+                    story.append(Paragraph(grand_text, styles["Normal"]))
 
-                session_summaries.append((sk, sess_label, sorted_names))
-                grand_participants = max(grand_participants, len(self.data["participants"]))
-                grand_catches += sess_total_catches
-                grand_weight += sess_total_weight
-
-            # ---- Per-participant pages, scoped to each session ----
-            indiv_widths = [80, 130, 90, 110, 110]
-            indiv_style = [
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("FONTSIZE", (0, 0), (-1, -1), 10),
-                ("LEADING", (0, 0), (-1, -1), 12),
-                ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
-                ("ALIGN", (0, 1), (0, -1), "CENTER"),
-                ("ALIGN", (2, 1), (2, -1), "CENTER"),
-                ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
-            ]
-
-            for sk, sess_label, sorted_names in session_summaries:
-                sess = self.data["sessions"][sk]
+            # === Individual Reports for the current manche ===
+            if include_individual:
+                indiv_widths = [80, 130, 90, 110, 110]
+                indiv_style = [
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 10),
+                    ("LEADING", (0, 0), (-1, -1), 12),
+                    ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
+                    ("ALIGN", (0, 1), (0, -1), "CENTER"),
+                    ("ALIGN", (2, 1), (2, -1), "CENTER"),
+                    ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
+                ]
                 for rank_i, name in enumerate(sorted_names, 1):
                     catches = sorted(sess["catches"].get(name, []), key=lambda x: x["time"])
                     if not catches:
                         continue
+                    story.append(PageBreak())
                     story.append(Paragraph(f"{event_name_display} - {event_location} - {event_date}", styles["Title"]))
                     story.append(Paragraph(f"{name} - {sess_label}", styles["Title"]))
                     story.append(Spacer(1, 8))
@@ -1269,7 +1349,7 @@ class FishingApp:
                             weight_par,
                             length_par,
                         ])
-                    story.append(Table(catch_table, colWidths=indiv_widths, style=indiv_style))
+                    story.append(Table(catch_table, colWidths=indiv_widths, style=indiv_style, repeatRows=1))
                     story.append(Spacer(1, 12))
                     info = self.data["participants"].get(name, {})
                     if info.get("club"):
@@ -1284,66 +1364,8 @@ class FishingApp:
                     story.append(Paragraph(f"{L['indiv_total_catches']}: {total_catches}", styles["Normal"]))
                     story.append(Paragraph(f"{L['indiv_total_weight']}: {self.fmt_weight(total_weight)} g", styles["Normal"]))
                     story.append(Paragraph(f"{L['indiv_final_rank']}: {rank_i}", styles["Normal"]))
-                    story.append(PageBreak())
 
-            # ---- Combined ranking across all sessions ----
-            combined_rows = []
-            for sk in SESSION_KEYS:
-                sess = self.data["sessions"][sk]
-                sess_label = key_to_display(self.lang, sk)
-                for name in sess["participants"]:
-                    catches = sess["catches"].get(name, [])
-                    if not catches:
-                        continue
-                    total_catches = sum(c["num_catches"] for c in catches)
-                    total_weight = sum(c["weight"] for c in catches)
-                    longest = max((c["length"] for c in catches if c["length"] is not None), default=0)
-                    combined_rows.append((name, sess_label, total_catches, total_weight, longest))
-
-            if combined_rows:
-                combined_rows.sort(key=lambda r: r[3], reverse=True)
-                story.append(Paragraph(L["combined_report"], styles["Title"]))
-                story.append(Spacer(1, 8))
-                story.append(Paragraph(f"{event_name_display} - {event_location} - {event_date}", center_style))
-                story.append(Spacer(1, 12))
-                comb_table = [[
-                    Paragraph("#", normal_style),
-                    Paragraph(L["table_participant_name"], normal_style),
-                    Paragraph(L["session_column"], normal_style),
-                    Paragraph(L["table_participants"], normal_style),
-                    Paragraph(L["table_total_weight"], normal_style),
-                    Paragraph(L["table_longest_fish"], normal_style),
-                ]]
-                for rank_i, (name, sess_label, tc, tw, lg) in enumerate(combined_rows, 1):
-                    comb_table.append([
-                        Paragraph(str(rank_i), normal_style),
-                        Paragraph(name, normal_style),
-                        Paragraph(sess_label, normal_style),
-                        Paragraph(str(tc), normal_style),
-                        Paragraph(self.fmt_weight(tw), normal_style),
-                        Paragraph(f"{lg}" if lg else "", normal_style),
-                    ])
-                comb_widths = [40, 200, 110, 90, 110, 90]
-                comb_style = [
-                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 10),
-                    ("LEADING", (0, 0), (-1, -1), 12),
-                    ("ALIGN", (0, 1), (0, -1), "CENTER"),
-                    ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
-                    ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
-                ]
-                story.append(Table(comb_table, colWidths=comb_widths, style=comb_style))
-                story.append(Spacer(1, 8))
-                grand_text = (f"{L['summary']} {len(self.data['participants'])} {L['summary_participants']}, "
-                              f"{grand_catches} {L['summary_total_catches']}, "
-                              f"{self.fmt_weight(grand_weight)} {L['summary_total_weight']}")
-                story.append(Paragraph(grand_text, styles["Normal"]))
-
-            # ---- Footer on every page ----
+            # === Footer on every page ===
             def add_footer(canvas, doc):
                 canvas.saveState()
                 canvas.setFont("Helvetica", 9)
@@ -1358,7 +1380,7 @@ class FishingApp:
             doc.build(story, onFirstPage=add_footer, onLaterPages=add_footer)
             messagebox.showinfo(
                 "Success",
-                L["report_generated"].replace("[date]_[event_name]", f"{date_str}_{event_name_file}"))
+                L["report_generated"].replace("[date]_[event_name]", f"{date_str}_{event_name_file}_{sk}"))
         except Exception as e:
             logging.error(f"generate_report failed: {e}")
             messagebox.showerror("Error", f"Report generation failed: {type(e).__name__}: {e}")
