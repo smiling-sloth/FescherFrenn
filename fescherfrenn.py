@@ -20,7 +20,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "2.1"
+APP_VERSION = "2.2"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -123,6 +123,7 @@ def migrate_data(data):
                 c.setdefault("type", "")
                 c.setdefault("time", "")
 
+    data.setdefault("track_details", False)
     data.setdefault("lang", "English")
     data["version"] = APP_VERSION
     return data
@@ -262,6 +263,8 @@ class FishingApp:
             self.import_btn = None
             self.help_btn = None
             self.catch_name_var = None  # Added for Combobox hint
+            self.track_details_var = None   # event-level: record length & type
+            self.overall_rankings = None    # right-hand pooled rankings widget
 
             self.canvas = tk.Canvas(self.root)
             self.scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=self.canvas.yview)
@@ -334,7 +337,7 @@ class FishingApp:
                 widget.destroy()
 
         self.main_frame.columnconfigure(0, weight=1, minsize=430)
-        self.main_frame.columnconfigure(1, weight=1, minsize=430)
+        self.main_frame.columnconfigure(1, weight=2, minsize=560)
         self.main_frame.rowconfigure(0, weight=0)
         self.main_frame.rowconfigure(1, weight=1)
         self.main_frame.rowconfigure(2, weight=0)
@@ -342,7 +345,7 @@ class FishingApp:
         left_frame = ttk.Frame(self.main_frame)
         left_frame.grid(row=1, column=0, sticky="nsew", padx=3, pady=3)
 
-        # -- Event details + Manche selector --
+        # -- Event details + round selector --
         event_frame = ttk.LabelFrame(left_frame, text=L["event_details"], padding=5)
         event_frame.pack(fill="x")
         event_frame.columnconfigure(1, weight=1)
@@ -364,10 +367,19 @@ class FishingApp:
         self.manche_combo.grid(row=3, column=1, pady=3, sticky="w")
         self.manche_combo.set(key_to_display(self.lang, self.current_manche))
         self.manche_combo.bind("<<ComboboxSelected>>", self.on_manche_changed)
-        self.manage_btn = ttk.Button(event_frame, text=L["manage_participants"], command=self.open_participants_manager)
-        self.manage_btn.grid(row=4, column=0, columnspan=2, pady=(6, 2), sticky="ew")
 
-        if self.data["event"]:
+        # Event-level toggle: record fish length & type.
+        self.track_details_var = tk.BooleanVar(value=self.data.get("track_details", False))
+        self.track_chk = ttk.Checkbutton(
+            event_frame, text=L["enable_details"], variable=self.track_details_var,
+            command=self.on_track_details_toggled)
+        self.track_chk.grid(row=4, column=0, columnspan=2, pady=(4, 2), sticky="w")
+
+        self.manage_btn = ttk.Button(event_frame, text=L["manage_participants"], command=self.open_participants_manager)
+        self.manage_btn.grid(row=5, column=0, columnspan=2, pady=(6, 2), sticky="ew")
+
+        event_locked = bool(self.data["event"])
+        if event_locked:
             self.event_name.insert(0, self.data["event"].get("name", ""))
             self.location.insert(0, self.data["event"].get("location", ""))
             date_str = self.data["event"].get("date", datetime.now().strftime("%d/%m/%Y"))
@@ -378,6 +390,8 @@ class FishingApp:
             self.event_name.config(state="disabled")
             self.location.config(state="disabled")
             self.date.config(state="disabled")
+            # Length/type policy is fixed once the event is locked.
+            self.track_chk.config(state="disabled")
 
         # -- Log catch --
         catch_frame = ttk.LabelFrame(left_frame, text=L["log_catch"], padding=5)
@@ -403,29 +417,54 @@ class FishingApp:
                                      validatecommand=(self.root.register(self.validate_catches), "%P"))
         self.num_catches.grid(row=2, column=1, pady=3, sticky="ew")
         self.num_catches.insert(0, "1")
-        ttk.Label(catch_frame, text=L["fish_length"], font=("Arial", self.font_size)).grid(row=3, column=0, pady=3, sticky="w")
+        self.length_label = ttk.Label(catch_frame, text=L["fish_length"], font=("Arial", self.font_size))
+        self.length_label.grid(row=3, column=0, pady=3, sticky="w")
         self.fish_length = ttk.Entry(catch_frame, font=("Arial", self.font_size), width=18, validate="key",
                                      validatecommand=(self.root.register(self.validate_number), "%P"))
         self.fish_length.grid(row=3, column=1, pady=3, sticky="ew")
-        ttk.Label(catch_frame, text=L["fish_type"], font=("Arial", self.font_size)).grid(row=4, column=0, pady=3, sticky="w")
+        self.type_label = ttk.Label(catch_frame, text=L["fish_type"], font=("Arial", self.font_size))
+        self.type_label.grid(row=4, column=0, pady=3, sticky="w")
         self.fish_type = ttk.Entry(catch_frame, font=("Arial", self.font_size), width=18)
         self.fish_type.grid(row=4, column=1, pady=3, sticky="ew")
-        self.log_btn = ttk.Button(catch_frame, text=L["log_catch"], command=self.log_catch)
-        self.log_btn.grid(row=5, column=1, pady=5, sticky="e")
-        self.edit_catches_btn = ttk.Button(catch_frame, text=L["edit_catches"], command=self.open_catch_editor)
-        self.edit_catches_btn.grid(row=5, column=0, pady=5, sticky="w")
 
-        # -- Right column: rankings + manche participants --
+        # Swapped per request: Log Catch on the left, Edit Catches on the right.
+        self.log_btn = ttk.Button(catch_frame, text=L["log_catch"], command=self.log_catch)
+        self.log_btn.grid(row=5, column=0, pady=5, sticky="w")
+        self.edit_catches_btn = ttk.Button(catch_frame, text=L["edit_catches"], command=self.open_catch_editor)
+        self.edit_catches_btn.grid(row=5, column=1, pady=5, sticky="e")
+
+        self._apply_details_enabled_state()
+
+        # -- Right column: two-panel rankings + actions + participants --
         right_frame = ttk.Frame(self.main_frame)
         right_frame.grid(row=0, column=1, rowspan=2, sticky="nsew", padx=3, pady=3)
 
-        rankings_frame = ttk.LabelFrame(right_frame, text=L["live_rankings"], padding=5)
-        rankings_frame.pack(fill="both", expand=True)
-        self.rankings = ttk.Label(rankings_frame, text=self.get_rankings(self.current_manche),
-                                  font=("Arial", self.font_size - 2), justify="left", wraplength=420)
-        self.rankings.pack(fill="both", expand=True)
+        rankings_outer = ttk.Frame(right_frame)
+        rankings_outer.pack(fill="both", expand=True)
+        rankings_outer.columnconfigure(0, weight=1, uniform="rk")
+        rankings_outer.columnconfigure(1, weight=1, uniform="rk")
+        rankings_outer.rowconfigure(0, weight=1)
 
-        btn_frame = ttk.Frame(rankings_frame)
+        bg = self.root.cget("background")
+        round_lf = ttk.LabelFrame(rankings_outer, text=L["live_rankings"], padding=5)
+        round_lf.grid(row=0, column=0, sticky="nsew", padx=(0, 3))
+        self.rankings = tk.Text(round_lf, width=30, height=20, relief="flat",
+                                wrap="word", state="disabled", background=bg,
+                                borderwidth=0, highlightthickness=0)
+        self.rankings.pack(fill="both", expand=True)
+        self._style_ranking_text(self.rankings)
+
+        overall_lf = ttk.LabelFrame(rankings_outer, text=L["overall_rankings"], padding=5)
+        overall_lf.grid(row=0, column=1, sticky="nsew", padx=(3, 0))
+        self.overall_rankings = tk.Text(overall_lf, width=30, height=20, relief="flat",
+                                        wrap="word", state="disabled", background=bg,
+                                        borderwidth=0, highlightthickness=0)
+        self.overall_rankings.pack(fill="both", expand=True)
+        self._style_ranking_text(self.overall_rankings)
+
+        self.refresh_rankings()
+
+        btn_frame = ttk.Frame(right_frame)
         btn_frame.pack(fill="x", pady=3)
         self.report_btn = ttk.Button(btn_frame, text=L["generate_report"], command=self.generate_report)
         self.report_btn.pack(side=tk.LEFT, padx=3)
@@ -442,7 +481,7 @@ class FishingApp:
             right_frame,
             text=f'{L["participants"]} - {key_to_display(self.lang, self.current_manche)}', padding=5)
         self.manche_pf.pack(fill="x", pady=3)
-        participants_canvas = tk.Canvas(self.manche_pf, height=180)
+        participants_canvas = tk.Canvas(self.manche_pf, height=160)
         participants_scrollbar = ttk.Scrollbar(self.manche_pf, orient="vertical", command=participants_canvas.yview)
         self.manche_participants_list = tk.Text(participants_canvas, height=8, width=30,
                                                 font=("Arial", self.font_size - 2))
@@ -454,7 +493,7 @@ class FishingApp:
             "<Configure>", lambda e: participants_canvas.configure(scrollregion=participants_canvas.bbox("all")))
         self.update_manche_participants_list()
 
-        # -- Report settings (which sections to include in the PDF) --
+        # -- Report settings --
         settings_frame = ttk.LabelFrame(right_frame, text=L["report_settings_label"], padding=5)
         settings_frame.pack(fill="x", pady=3)
         ttk.Label(settings_frame, text=f'\u2713 {L["chk_event_summary"]}',
@@ -466,19 +505,27 @@ class FishingApp:
         self.combined_chk.pack(anchor="w", pady=2)
         self._update_combined_state()
 
-        # -- Footer --
+        # -- Footer: version bottom-left, copyright centred --
         footer_frame = ttk.Frame(self.main_frame)
-        footer_frame.grid(row=2, column=0, columnspan=2, pady=5, sticky="s")
-        if "fescherfrenn@outlook.com" in L["copyright"]:
-            before, after = L["copyright"].split("fescherfrenn@outlook.com", 1)
-            ttk.Label(footer_frame, text=before, font=("Arial", self.font_size - 4)).pack(side=tk.LEFT)
-            email_label = tk.Label(footer_frame, text="fescherfrenn@outlook.com",
+        footer_frame.grid(row=2, column=0, columnspan=2, pady=5, sticky="ew")
+        footer_frame.columnconfigure(0, weight=1)
+        footer_frame.columnconfigure(1, weight=0)
+        footer_frame.columnconfigure(2, weight=1)
+        ttk.Label(footer_frame, text=f"v{APP_VERSION}",
+                  font=("Arial", self.font_size - 4), foreground="gray").grid(row=0, column=0, sticky="w", padx=6)
+        cr_holder = ttk.Frame(footer_frame)
+        cr_holder.grid(row=0, column=1)
+        cr = self.copyright_text()
+        if "fescherfrenn@outlook.com" in cr:
+            before, after = cr.split("fescherfrenn@outlook.com", 1)
+            ttk.Label(cr_holder, text=before, font=("Arial", self.font_size - 4)).pack(side=tk.LEFT)
+            email_label = tk.Label(cr_holder, text="fescherfrenn@outlook.com",
                                    font=("Arial", self.font_size - 4), foreground="blue", cursor="hand2")
             email_label.pack(side=tk.LEFT)
             email_label.bind("<Button-1>", lambda e: webbrowser.open("mailto:fescherfrenn@outlook.com"))
-            ttk.Label(footer_frame, text=after, font=("Arial", self.font_size - 4)).pack(side=tk.LEFT)
+            ttk.Label(cr_holder, text=after, font=("Arial", self.font_size - 4)).pack(side=tk.LEFT)
         else:
-            ttk.Label(footer_frame, text=L["copyright"], font=("Arial", self.font_size - 4)).pack(side=tk.LEFT)
+            ttk.Label(cr_holder, text=cr, font=("Arial", self.font_size - 4)).pack(side=tk.LEFT)
 
         # -- Tooltips --
         self.create_tooltip(self.manage_btn, L["tooltip_manage"])
@@ -489,6 +536,28 @@ class FishingApp:
         self.create_tooltip(self.export_btn, L["tooltip_export"])
         self.create_tooltip(self.import_btn, L["tooltip_import"])
         self.create_tooltip(self.help_btn, L["tooltip_help"])
+
+    def _apply_details_enabled_state(self):
+        """Grey out / lock the length & type inputs when the event doesn't track them."""
+        track = self.data.get("track_details", False)
+        state = "normal" if track else "disabled"
+        for w in (self.fish_length, self.fish_type):
+            if w is not None:
+                try:
+                    w.config(state=state)
+                except tk.TclError:
+                    pass
+        fg = "black" if track else "#999999"
+        for lbl in (getattr(self, "length_label", None), getattr(self, "type_label", None)):
+            if lbl is not None:
+                lbl.config(foreground=fg)
+
+    def on_track_details_toggled(self):
+        """User flipped the length/type checkbox before the event is locked."""
+        self.data["track_details"] = bool(self.track_details_var.get())
+        self._apply_details_enabled_state()
+        self.refresh_rankings()
+
 
     def on_combobox_focus_in(self, event):
         if self.catch_name_var.get() == LANGUAGES[self.lang]["select_participant"]:
@@ -592,9 +661,14 @@ class FishingApp:
                 return
             weight = float(weight_str.replace(",", "."))
             num_catches = int(num_catches_str)
-            length = (float(length_str.replace(",", "."))
-                      if length_str and float(length_str.replace(",", ".")) > 0
-                      else None)
+            track = self.data.get("track_details", False)
+            if not track:
+                length = None
+                fish_type = ""
+            else:
+                length = (float(length_str.replace(",", "."))
+                          if length_str and float(length_str.replace(",", ".")) > 0
+                          else None)
             if num_catches > 1:
                 fish_type = ""
                 length = None
@@ -608,7 +682,7 @@ class FishingApp:
             self.num_catches.insert(0, "1")
             self.catch_name_var.set('')
             self.on_combobox_focus_out(None)
-            self.rankings.config(text=self.get_rankings(self.current_manche))
+            self.refresh_rankings()
             self.update_event()
             messagebox.showinfo("Success", L["saved"])
         except ValueError:
@@ -633,37 +707,95 @@ class FishingApp:
             s = s.replace(",", "X").replace(".", ",").replace("X", ".")
         return s
 
-    def get_rankings(self, manche_key=None):
+    def copyright_text(self):
+        """Copyright line with the runtime-computed year span substituted in."""
         L = LANGUAGES[self.lang]
-        if manche_key is None:
-            manche_key = self.current_manche
-        sess_label = key_to_display(self.lang, manche_key)
-        rankings = f'{L["live_rankings"]} - {sess_label}:\n\n'
-        _catches_dict = self.data["sessions"][manche_key]["catches"]
+        yr = datetime.now().year
+        span = "2025" if yr <= 2025 else f"2025 - {yr}"
+        return L["copyright"].replace("{year_span}", span)
 
-        total_weights = {name: sum(c["weight"] for c in catches)
-                         for name, catches in _catches_dict.items()}
-        top_weights = sorted(total_weights.items(), key=lambda x: x[1], reverse=True)[:3]
-        rankings += f"{L['total_weight']}:\n"
-        for i, (name, weight) in enumerate(top_weights, 1):
-            rankings += f"{i}. {name}: {self.fmt_weight(weight)} g\n"
-        all_catches = [(name, catch) for name, catches in _catches_dict.items()
-                       for catch in catches if catch["num_catches"] == 1]
-        top_lengths = sorted(all_catches, key=lambda x: x[1]["length"] or 0, reverse=True)[:3]
-        rankings += f"\n{L['longest_fish']}:\n"
-        for i, (name, catch) in enumerate(top_lengths, 1):
-            rankings += f"{i}. {name}: {catch['length'] or 0} cm\n"
-        top_heaviest = sorted(all_catches, key=lambda x: x[1]["weight"], reverse=True)[:3]
-        rankings += f"\n{L['heaviest_fish']}:\n"
-        for i, (name, catch) in enumerate(top_heaviest, 1):
-            rankings += f"{i}. {name}: {self.fmt_weight(catch['weight'])} g\n"
-        num_catches = {name: sum(c["num_catches"] for c in catches)
-                       for name, catches in _catches_dict.items()}
-        top_catches = sorted(num_catches.items(), key=lambda x: x[1], reverse=True)[:3]
-        rankings += f"\n{L['num_catches_label']}:\n"
-        for i, (name, count) in enumerate(top_catches, 1):
-            rankings += f"{i}. {name}: {count} catches\n"
-        return rankings
+    def compute_rankings(self, catches_dict, title):
+        """Return a list of (text, tag) segments for a rankings block.
+
+        Order: Total Weight -> Most Catches -> Longest Fish -> Heaviest Fish.
+        When the event does not track length/type, the last two blocks are
+        rendered with the 'dim' tag and not computed.
+        """
+        L = LANGUAGES[self.lang]
+        track = self.data.get("track_details", False)
+        out = [(f"{title}\n\n", "head")]
+
+        total_weights = {n: sum(c["weight"] for c in cs)
+                         for n, cs in catches_dict.items()}
+        top_w = sorted(total_weights.items(), key=lambda x: x[1], reverse=True)[:3]
+        out.append((f"{L['rank_weight']}:\n", "sub"))
+        for idx, (n, w) in enumerate(top_w, 1):
+            out.append((f"{idx}. {n}: {self.fmt_weight(w)} g\n", "normal"))
+
+        num_catches = {n: sum(c["num_catches"] for c in cs)
+                       for n, cs in catches_dict.items()}
+        top_c = sorted(num_catches.items(), key=lambda x: x[1], reverse=True)[:3]
+        out.append((f"\n{L['rank_catches']}:\n", "sub"))
+        for idx, (n, c) in enumerate(top_c, 1):
+            out.append((f"{idx}. {n}: {c}\n", "normal"))
+
+        single = [(n, c) for n, cs in catches_dict.items()
+                  for c in cs if c["num_catches"] == 1]
+
+        tag = "sub" if track else "dim"
+        out.append((f"\n{L['rank_longest']}:", tag))
+        if track:
+            out.append(("\n", "normal"))
+            top_l = sorted(single, key=lambda x: x[1]["length"] or 0, reverse=True)[:3]
+            for idx, (n, c) in enumerate(top_l, 1):
+                out.append((f"{idx}. {n}: {c['length'] or 0} cm\n", "normal"))
+        else:
+            out.append((f" {L['details_disabled_note']}\n", "dim"))
+
+        out.append((f"\n{L['rank_heaviest']}:", tag))
+        if track:
+            out.append(("\n", "normal"))
+            top_h = sorted(single, key=lambda x: x[1]["weight"], reverse=True)[:3]
+            for idx, (n, c) in enumerate(top_h, 1):
+                out.append((f"{idx}. {n}: {self.fmt_weight(c['weight'])} g\n", "normal"))
+        else:
+            out.append((f" {L['details_disabled_note']}\n", "dim"))
+        return out
+
+    def round_rankings_segments(self):
+        L = LANGUAGES[self.lang]
+        mk = self.current_manche
+        cd = self.data["sessions"][mk]["catches"]
+        return self.compute_rankings(cd, f'{L["live_rankings"]} - {key_to_display(self.lang, mk)}')
+
+    def overall_rankings_segments(self):
+        L = LANGUAGES[self.lang]
+        pooled = {}
+        for sk in SESSION_KEYS:
+            for n, cs in self.data["sessions"][sk]["catches"].items():
+                pooled.setdefault(n, []).extend(cs)
+        return self.compute_rankings(pooled, L["overall_rankings"])
+
+    def _style_ranking_text(self, widget):
+        widget.tag_configure("head", font=("Arial", max(9, self.font_size - 2), "bold"))
+        widget.tag_configure("sub", font=("Arial", max(8, self.font_size - 3), "bold"))
+        widget.tag_configure("normal", font=("Arial", max(8, self.font_size - 3)))
+        widget.tag_configure("dim", foreground="#999999",
+                             font=("Arial", max(8, self.font_size - 3), "italic"))
+
+    def render_rankings(self, widget, segments):
+        if widget is None:
+            return
+        widget.config(state="normal")
+        widget.delete("1.0", tk.END)
+        for txt, tag in segments:
+            widget.insert(tk.END, txt, tag)
+        widget.config(state="disabled")
+
+    def refresh_rankings(self):
+        self.render_rankings(self.rankings, self.round_rankings_segments())
+        self.render_rankings(self.overall_rankings, self.overall_rankings_segments())
+
 
     # -- formatting helper for editable numbers ---------------------
     def num_to_str(self, value):
@@ -703,8 +835,7 @@ class FishingApp:
             self.catch_name["values"] = self.current_manche_participants()
             self.catch_name_var.set(L["select_participant"])
             self.catch_name.config(foreground='grey')
-        if self.rankings is not None:
-            self.rankings.config(text=self.get_rankings(self.current_manche))
+        self.refresh_rankings()
         if self.manche_pf is not None:
             self.manche_pf.config(
                 text=f'{L["participants"]} - {key_to_display(self.lang, self.current_manche)}')
@@ -735,8 +866,10 @@ class FishingApp:
         win.grab_set()
         win.geometry("980x560")
 
+        close_bar = ttk.Frame(win)
+        close_bar.pack(side="bottom", fill="x")
         container = ttk.Frame(win, padding=10)
-        container.pack(fill="both", expand=True)
+        container.pack(side="top", fill="both", expand=True)
         container.columnconfigure(0, weight=1)
         container.columnconfigure(2, weight=1)
         container.rowconfigure(0, weight=1)
@@ -754,10 +887,10 @@ class FishingApp:
         roster_tv.column("cat", width=100, anchor="w")
         roster_sb = ttk.Scrollbar(left, orient="vertical", command=roster_tv.yview)
         roster_tv.configure(yscrollcommand=roster_sb.set)
-        roster_sb.pack(side="right", fill="y")
-        roster_tv.pack(side="top", fill="both", expand=True)
         roster_btns = ttk.Frame(left)
         roster_btns.pack(side="bottom", fill="x", pady=(6, 0))
+        roster_sb.pack(side="right", fill="y")
+        roster_tv.pack(side="top", fill="both", expand=True)
 
         # Middle: transfer buttons
         mid = ttk.Frame(container)
@@ -779,12 +912,13 @@ class FishingApp:
         manche_tv.configure(yscrollcommand=manche_sb.set)
         manche_sb.pack(side="right", fill="y")
         manche_tv.pack(side="top", fill="both", expand=True)
-        manche_btns = ttk.Frame(right)
-        manche_btns.pack(side="bottom", fill="x", pady=(6, 0))
 
         def refresh_panes():
             roster_tv.delete(*roster_tv.get_children())
+            in_round = set(self.data["sessions"][self.current_manche]["participants"])
             for name in sorted(self.data["participants"].keys(), key=str.lower):
+                if name in in_round:
+                    continue  # already assigned to this round -> hide from roster list
                 info = self.data["participants"][name]
                 cat_disp = L["category_options"].get(info.get("category", ""), info.get("category", ""))
                 roster_tv.insert("", "end", iid=name, text=name,
@@ -869,8 +1003,8 @@ class FishingApp:
         ttk.Button(roster_btns, text=L["remove"], command=remove_selected).pack(side="left", padx=2)
         ttk.Button(mid, text=L["add_to_manche"], command=add_to_manche).pack(pady=10, fill="x")
         ttk.Button(mid, text=L["remove_from_manche"], command=remove_from_manche).pack(pady=10, fill="x")
-        ttk.Button(manche_btns, text=L["remove_from_manche"], command=remove_from_manche).pack(side="left", padx=2)
-        ttk.Button(win, text=L["close"], command=win.destroy).pack(pady=(0, 8))
+        close_bar.columnconfigure(0, weight=1)
+        ttk.Button(close_bar, text=L["close"], command=win.destroy).grid(row=0, column=0, pady=6)
 
         refresh_panes()
         win.wait_window()
@@ -979,6 +1113,10 @@ class FishingApp:
             tv.column(c, width=w, anchor=anchor)
         tv_sb = ttk.Scrollbar(frame, orient="vertical", command=tv.yview)
         tv.configure(yscrollcommand=tv_sb.set)
+        # Button bar must be packed before the expanding tree, otherwise the
+        # tree consumes its space and the buttons become invisible.
+        btns = ttk.Frame(frame)
+        btns.pack(side="bottom", fill="x", pady=6)
         tv_sb.pack(side="right", fill="y")
         tv.pack(side="top", fill="both", expand=True)
 
@@ -1024,8 +1162,6 @@ class FishingApp:
                 refresh()
                 self.refresh_manche_view()
 
-        btns = ttk.Frame(frame)
-        btns.pack(side="bottom", fill="x", pady=6)
         ttk.Button(btns, text=L["edit"], command=edit_selected).pack(side="left", padx=4)
         ttk.Button(btns, text=L["delete"], command=delete_selected).pack(side="left", padx=4)
         ttk.Button(btns, text=L["close"], command=win.destroy).pack(side="right", padx=4)
@@ -1131,6 +1267,7 @@ class FishingApp:
             return
 
         try:
+            track = self.data.get("track_details", False)
             event = self.data["event"]
             event_name_file = str(event.get("name", "event")).replace(" ", "_")
             event_name_display = str(event.get("name", "event"))
@@ -1147,7 +1284,8 @@ class FishingApp:
                 messagebox.showerror("Error", L["permission_error"].replace("[folder]", folder_name))
                 return
 
-            page = landscape(letter)
+            # Portrait when length/type are not tracked, landscape when they are.
+            page = landscape(letter) if track else letter
             doc = SimpleDocTemplate(filename, pagesize=page,
                                     leftMargin=36, rightMargin=36,
                                     topMargin=42, bottomMargin=42)
@@ -1173,7 +1311,19 @@ class FishingApp:
             story.append(Paragraph(f"{event_name_display} - {event_location} - {event_date}", center_style))
             story.append(Spacer(1, 12))
 
-            # === Event Summary - current manche only ===
+            # === Event Summary - current round only ===
+            # Column set depends on whether length/type are tracked.
+            if track:
+                sum_headers = [L["name"].rstrip(":"), L["table_club"], L["table_category"],
+                               L["table_remark"], L["table_participants"],
+                               L["table_total_weight"], L["table_longest_fish"]]
+                sum_widths = [32, 150, 95, 95, 110, 60, 75, 65]
+            else:
+                sum_headers = [L["name"].rstrip(":"), L["table_club"], L["table_category"],
+                               L["table_remark"], L["table_participants"],
+                               L["table_total_weight"]]
+                sum_widths = [28, 132, 85, 80, 110, 50, 55]
+
             common_style = [
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
                 ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
@@ -1186,20 +1336,11 @@ class FishingApp:
                 ("ALIGN", (5, 1), (-1, -1), "RIGHT"),
                 ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
             ]
-            col_widths = [32, 150, 95, 95, 110, 60, 75, 65]
 
             story.append(Paragraph(f'{L["summary_report"]} - {sess_label}', center_style))
             story.append(Spacer(1, 6))
-            table = [[
-                Paragraph("#", normal_style),
-                Paragraph(L["name"].rstrip(":"), normal_style),
-                Paragraph(L["table_club"], normal_style),
-                Paragraph(L["table_category"], normal_style),
-                Paragraph(L["table_remark"], normal_style),
-                Paragraph(L["table_participants"], normal_style),
-                Paragraph(L["table_total_weight"], normal_style),
-                Paragraph(L["table_longest_fish"], normal_style),
-            ]]
+            header_row = [Paragraph("#", normal_style)] + [Paragraph(h, normal_style) for h in sum_headers]
+            table = [header_row]
             names_in_sess = sess["participants"]
             totals = {n: sum(c["weight"] for c in sess["catches"].get(n, []))
                       for n in names_in_sess}
@@ -1216,7 +1357,7 @@ class FishingApp:
                 sess_total_weight += total_weight
                 info = self.data["participants"].get(name, {})
                 cat_disp = L["category_options"].get(info.get("category", ""), info.get("category", ""))
-                table.append([
+                row = [
                     Paragraph(str(rank_i), normal_style),
                     Paragraph(str(name), normal_style),
                     Paragraph(info.get("club", "") or "", normal_style),
@@ -1224,9 +1365,11 @@ class FishingApp:
                     Paragraph(info.get("remark", "") or "", normal_style),
                     Paragraph(str(total_catches), normal_style),
                     Paragraph(self.fmt_weight(total_weight), normal_style),
-                    Paragraph(f"{longest}" if longest else "", normal_style),
-                ])
-            story.append(Table(table, colWidths=col_widths, style=common_style, repeatRows=1))
+                ]
+                if track:
+                    row.append(Paragraph(f"{longest}" if longest else "", normal_style))
+                table.append(row)
+            story.append(Table(table, colWidths=sum_widths, style=common_style, repeatRows=1))
             story.append(Spacer(1, 8))
             summary_text = (f"{L['summary']} {len(names_in_sess)} {L['summary_participants']}, "
                             f"{sess_total_catches} {L['summary_total_catches']}, "
@@ -1236,7 +1379,7 @@ class FishingApp:
             include_combined = (sk == "final" and self.include_combined_var.get())
             include_individual = self.include_individual_var.get()
 
-            # === Combined Ranking - All Sessions (Final + checkbox only) ===
+            # === Combined Ranking - All Rounds (Final + checkbox only) ===
             if include_combined:
                 combined_rows = []
                 grand_catches = 0
@@ -1261,24 +1404,26 @@ class FishingApp:
                     story.append(Spacer(1, 8))
                     story.append(Paragraph(f"{event_name_display} - {event_location} - {event_date}", center_style))
                     story.append(Spacer(1, 12))
-                    comb_table = [[
-                        Paragraph("#", normal_style),
-                        Paragraph(L["table_participant_name"], normal_style),
-                        Paragraph(L["session_column"], normal_style),
-                        Paragraph(L["table_participants"], normal_style),
-                        Paragraph(L["table_total_weight"], normal_style),
-                        Paragraph(L["table_longest_fish"], normal_style),
-                    ]]
+                    comb_headers = [L["table_participant_name"], L["session_column"],
+                                    L["table_participants"], L["table_total_weight"]]
+                    if track:
+                        comb_headers.append(L["table_longest_fish"])
+                        comb_widths = [40, 200, 110, 90, 110, 90]
+                    else:
+                        comb_widths = [34, 170, 95, 80, 90]
+                    comb_table = [[Paragraph("#", normal_style)] +
+                                  [Paragraph(h, normal_style) for h in comb_headers]]
                     for rank_i, (n, slabel, tc, tw, lg) in enumerate(combined_rows, 1):
-                        comb_table.append([
+                        crow = [
                             Paragraph(str(rank_i), normal_style),
                             Paragraph(n, normal_style),
                             Paragraph(slabel, normal_style),
                             Paragraph(str(tc), normal_style),
                             Paragraph(self.fmt_weight(tw), normal_style),
-                            Paragraph(f"{lg}" if lg else "", normal_style),
-                        ])
-                    comb_widths = [40, 200, 110, 90, 110, 90]
+                        ]
+                        if track:
+                            crow.append(Paragraph(f"{lg}" if lg else "", normal_style))
+                        comb_table.append(crow)
                     comb_style = [
                         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
                         ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
@@ -1298,9 +1443,15 @@ class FishingApp:
                                   f"{self.fmt_weight(grand_weight)} {L['summary_total_weight']}")
                     story.append(Paragraph(grand_text, styles["Normal"]))
 
-            # === Individual Reports for the current manche ===
+            # === Individual Reports for the current round ===
             if include_individual:
-                indiv_widths = [80, 130, 90, 110, 110]
+                if track:
+                    ind_headers = [L["indiv_time"], L["indiv_type"], L["number_of_catches"],
+                                   L["indiv_weight"], L["indiv_length"]]
+                    indiv_widths = [80, 130, 90, 110, 110]
+                else:
+                    ind_headers = [L["indiv_time"], L["number_of_catches"], L["indiv_weight"]]
+                    indiv_widths = [130, 130, 130]
                 indiv_style = [
                     ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
                     ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
@@ -1309,9 +1460,8 @@ class FishingApp:
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                     ("FONTSIZE", (0, 0), (-1, -1), 10),
                     ("LEADING", (0, 0), (-1, -1), 12),
-                    ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
+                    ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
                     ("ALIGN", (0, 1), (0, -1), "CENTER"),
-                    ("ALIGN", (2, 1), (2, -1), "CENTER"),
                     ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
                 ]
                 for rank_i, name in enumerate(sorted_names, 1):
@@ -1322,33 +1472,34 @@ class FishingApp:
                     story.append(Paragraph(f"{event_name_display} - {event_location} - {event_date}", styles["Title"]))
                     story.append(Paragraph(f"{name} - {sess_label}", styles["Title"]))
                     story.append(Spacer(1, 8))
-                    catch_table = [[
-                        Paragraph(L["indiv_time"], normal_style),
-                        Paragraph(L["indiv_type"], normal_style),
-                        Paragraph(L["number_of_catches"], normal_style),
-                        Paragraph(L["indiv_weight"], normal_style),
-                        Paragraph(L["indiv_length"], normal_style),
-                    ]]
+                    catch_table = [[Paragraph(h, normal_style) for h in ind_headers]]
                     max_w = max(c["weight"] for c in catches)
                     max_l = max((c["length"] or 0 for c in catches if c["length"] is not None), default=0)
                     for c in catches:
-                        fish_type = c.get("type", "") or "-"
                         weight_val = c["weight"]
                         weight_par = Paragraph(self.fmt_weight(weight_val),
                                                bold_style if weight_val == max_w else normal_style)
-                        length_v = c.get("length")
-                        if length_v is None:
-                            length_par = Paragraph("-", normal_style)
+                        if track:
+                            fish_type = c.get("type", "") or "-"
+                            length_v = c.get("length")
+                            if length_v is None:
+                                length_par = Paragraph("-", normal_style)
+                            else:
+                                length_par = Paragraph(self.num_to_str(length_v),
+                                                       bold_style if length_v == max_l else normal_style)
+                            catch_table.append([
+                                Paragraph(str(c.get("time", "")), normal_style),
+                                Paragraph(str(fish_type), normal_style),
+                                Paragraph(str(c["num_catches"]), normal_style),
+                                weight_par,
+                                length_par,
+                            ])
                         else:
-                            length_par = Paragraph(self.num_to_str(length_v),
-                                                   bold_style if length_v == max_l else normal_style)
-                        catch_table.append([
-                            Paragraph(str(c.get("time", "")), normal_style),
-                            Paragraph(str(fish_type), normal_style),
-                            Paragraph(str(c["num_catches"]), normal_style),
-                            weight_par,
-                            length_par,
-                        ])
+                            catch_table.append([
+                                Paragraph(str(c.get("time", "")), normal_style),
+                                Paragraph(str(c["num_catches"]), normal_style),
+                                weight_par,
+                            ])
                     story.append(Table(catch_table, colWidths=indiv_widths, style=indiv_style, repeatRows=1))
                     story.append(Spacer(1, 12))
                     info = self.data["participants"].get(name, {})
@@ -1365,11 +1516,13 @@ class FishingApp:
                     story.append(Paragraph(f"{L['indiv_total_weight']}: {self.fmt_weight(total_weight)} g", styles["Normal"]))
                     story.append(Paragraph(f"{L['indiv_final_rank']}: {rank_i}", styles["Normal"]))
 
-            # === Footer on every page ===
+            # === Footer on every page (copyright with computed year span) ===
+            footer_src = self.copyright_text()
+
             def add_footer(canvas, doc):
                 canvas.saveState()
                 canvas.setFont("Helvetica", 9)
-                footer_text = L["copyright"].replace(
+                footer_text = footer_src.replace(
                     "fescherfrenn@outlook.com",
                     '<link href="mailto:fescherfrenn@outlook.com" color="blue">fescherfrenn@outlook.com</link>')
                 p = Paragraph(footer_text, normal_style)
