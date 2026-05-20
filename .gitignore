@@ -1,0 +1,16 @@
+# Runtime / generated
+fescherfrenn.log
+__pycache__/
+*.pyc
+
+# Event data created by the app
+[0-9]*_*/
+
+# PyInstaller build output
+build/
+dist/
+*.spec
+
+# OS noise
+.DS_Store
+Thumbs.db
