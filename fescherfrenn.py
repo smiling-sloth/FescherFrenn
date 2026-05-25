@@ -10,7 +10,8 @@ import re
 import webbrowser
 
 try:
-    from reportlab.lib.pagesizes import letter, landscape
+    from reportlab.lib.pagesizes import letter, landscape, A4
+    from reportlab.pdfgen import canvas as _rlcanvas
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, PageBreak, Image
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib import colors
@@ -20,13 +21,72 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "2.2"
+APP_VERSION = "3.0"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 TRANSLATIONS_FILE = "translations.json"
+CONFIG_FILE = "config.json"
 SESSION_KEYS = ["manche1", "manche2", "manche3", "final"]
+
+DEFAULT_CONFIG = {
+    "invoice_prefix": "FFS2010",
+    "issuer_name": "Fëscherfrënn Stengefort 2010",
+    "issuer_legal_name": "Fëscherfrënn Stengefort 2010 a.s.b.l.",
+    "issuer_house_number": "44",
+    "issuer_street": "rue de Sterpenich",
+    "issuer_postcode_country": "L",
+    "issuer_postcode_digits": "8379",
+    "issuer_city": "Kleinbettingen",
+    "issuer_country": "Luxembourg",
+    "issuer_phone": "+352 621 22 40 56",
+    "issuer_email": "fescherfrenn@outlook.com",
+    "bank_account_holder": "Fescherfrenn Stengefort 2010",
+    "bank_name": "Banque Raiffeisen",
+    "iban_groups": ["CCRA", "LU85", "0090", "0000", "0597", "1635"],
+    "payment_terms_days": 30
+}
+
+
+def load_config():
+    """Load config.json next to the script (or fall back to defaults).
+
+    Writes the config back so users always have a starting file to edit.
+    """
+    path = _resource_path(CONFIG_FILE)
+    cfg = dict(DEFAULT_CONFIG)
+    if os.path.exists(path):
+        try:
+            with open(path, 'r', encoding='utf-8') as fh:
+                loaded = json.load(fh)
+            if isinstance(loaded, dict):
+                for k in DEFAULT_CONFIG:
+                    if k in loaded:
+                        cfg[k] = loaded[k]
+        except Exception as exc:
+            logging.error(f"Failed to load {CONFIG_FILE}: {exc}")
+    else:
+        try:
+            with open(path, 'w', encoding='utf-8') as fh:
+                json.dump(cfg, fh, indent=2, ensure_ascii=False)
+        except Exception as exc:
+            logging.error(f"Could not create default {CONFIG_FILE}: {exc}")
+    return cfg
+
+
+def save_config(cfg):
+    """Persist config.json (best-effort) and refresh the in-memory CONFIG dict."""
+    try:
+        path = _resource_path(CONFIG_FILE)
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump(cfg, fh, indent=2, ensure_ascii=False)
+    except Exception as exc:
+        logging.error(f"Failed to save {CONFIG_FILE}: {exc}")
+        return False
+    CONFIG.clear()
+    CONFIG.update(cfg)
+    return True
 
 
 def _resource_path(name):
@@ -58,6 +118,7 @@ def load_translations():
 
 
 LANGUAGES = load_translations()
+CONFIG = load_config()
 
 
 def empty_sessions():
@@ -124,6 +185,11 @@ def migrate_data(data):
                 c.setdefault("time", "")
 
     data.setdefault("track_details", False)
+    # v3.0: per-event invoice store. Numbers live ONLY inside an event.
+    if not isinstance(data.get("invoices"), list):
+        data["invoices"] = []
+    data.setdefault("invoice_seq_start", None)
+    data.setdefault("invoice_next", None)
     data.setdefault("lang", "English")
     data["version"] = APP_VERSION
     return data
@@ -417,6 +483,10 @@ class FishingApp:
                                      validatecommand=(self.root.register(self.validate_catches), "%P"))
         self.num_catches.grid(row=2, column=1, pady=3, sticky="ew")
         self.num_catches.insert(0, "1")
+        # When the event tracks length/type, every catch is a single fish, so the
+        # number of catches is forced to 1 and the field is locked.
+        if self.data.get("track_details", False):
+            self.num_catches.config(state="disabled")
         self.length_label = ttk.Label(catch_frame, text=L["fish_length"], font=("Arial", self.font_size))
         self.length_label.grid(row=3, column=0, pady=3, sticky="w")
         self.fish_length = ttk.Entry(catch_frame, font=("Arial", self.font_size), width=18, validate="key",
@@ -474,6 +544,10 @@ class FishingApp:
         self.export_btn.pack(side=tk.LEFT, padx=3)
         self.import_btn = ttk.Button(btn_frame, text=L["import_event"], command=self.import_event)
         self.import_btn.pack(side=tk.LEFT, padx=3)
+        self.invoices_btn = ttk.Button(btn_frame, text=L["invoices_btn"], command=self.open_invoices_manager)
+        self.invoices_btn.pack(side=tk.LEFT, padx=3)
+        self.settings_btn = ttk.Button(btn_frame, text=L["settings_btn"], command=self.open_settings_dialog)
+        self.settings_btn.pack(side=tk.LEFT, padx=3)
         self.help_btn = ttk.Button(btn_frame, text=L["help"], command=self.show_help)
         self.help_btn.pack(side=tk.LEFT, padx=3)
 
@@ -535,10 +609,16 @@ class FishingApp:
         self.create_tooltip(self.reset_btn, L["tooltip_reset"])
         self.create_tooltip(self.export_btn, L["tooltip_export"])
         self.create_tooltip(self.import_btn, L["tooltip_import"])
+        self.create_tooltip(self.invoices_btn, L["tooltip_invoices"])
+        self.create_tooltip(self.settings_btn, L["tooltip_settings"])
         self.create_tooltip(self.help_btn, L["tooltip_help"])
 
     def _apply_details_enabled_state(self):
-        """Grey out / lock the length & type inputs when the event doesn't track them."""
+        """Grey out / lock the length & type inputs when the event doesn't track them.
+
+        Also locks the num-catches field to 1 when length/type is enabled, since a
+        length and a fish type can only meaningfully apply to a single catch.
+        """
         track = self.data.get("track_details", False)
         state = "normal" if track else "disabled"
         for w in (self.fish_length, self.fish_type):
@@ -551,6 +631,18 @@ class FishingApp:
         for lbl in (getattr(self, "length_label", None), getattr(self, "type_label", None)):
             if lbl is not None:
                 lbl.config(foreground=fg)
+        # num_catches: locked at 1 whenever length/type is enabled.
+        if getattr(self, "num_catches", None) is not None:
+            try:
+                if track:
+                    self.num_catches.config(state="normal")
+                    self.num_catches.delete(0, tk.END)
+                    self.num_catches.insert(0, "1")
+                    self.num_catches.config(state="disabled")
+                else:
+                    self.num_catches.config(state="normal")
+            except tk.TclError:
+                pass
 
     def on_track_details_toggled(self):
         """User flipped the length/type checkbox before the event is locked."""
@@ -1201,6 +1293,10 @@ class FishingApp:
                               validatecommand=(self.root.register(self.validate_catches), "%P"))
         num_entry.grid(row=2, column=1, pady=4, sticky="ew")
         num_entry.insert(0, str(catch.get("num_catches", 1)))
+        if self.data.get("track_details", False):
+            num_entry.delete(0, tk.END)
+            num_entry.insert(0, "1")
+            num_entry.config(state="disabled")
 
         ttk.Label(frame, text=L["fish_length"], font=("Arial", self.font_size)).grid(row=3, column=0, sticky="w", pady=4)
         length_entry = ttk.Entry(frame, font=("Arial", self.font_size), width=16, validate="key",
@@ -1253,6 +1349,753 @@ class FishingApp:
         ttk.Button(button_frame, text=L["save"], command=save).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text=L["close"], command=dlg.destroy).pack(side=tk.LEFT, padx=5)
         dlg.bind("<Return>", lambda e: save())
+        dlg.wait_window()
+
+    # --- v3.0 invoicing -------------------------------------------
+    FRENCH_MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin",
+                     "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
+
+    def format_french_date(self, dt):
+        return f"{dt.day} {self.FRENCH_MONTHS[dt.month - 1]} {dt.year}"
+
+    def event_year(self):
+        try:
+            return datetime.strptime(self.data["event"].get("date", ""), "%d/%m/%Y").year
+        except (ValueError, KeyError):
+            return datetime.now().year
+
+    def invoice_clubs(self):
+        """Distinct non-empty club names actually used by at least one participant
+        who is assigned to any round of this event."""
+        assigned = set()
+        for sk in SESSION_KEYS:
+            assigned.update(self.data["sessions"][sk]["participants"])
+        clubs = set()
+        for n in assigned:
+            info = self.data["participants"].get(n, {})
+            club = (info.get("club") or "").strip()
+            if club:
+                clubs.add(club)
+        return sorted(clubs, key=str.lower)
+
+    def invoice_individuals_dropdown(self):
+        """List shown when 'Individual' is selected.
+
+        Group 1: assigned participants whose club is blank/null, alphabetical.
+        Separator (non-selectable).
+        Group 2: all *other* assigned participants, alphabetical.
+        """
+        L = LANGUAGES[self.lang]
+        assigned = set()
+        for sk in SESSION_KEYS:
+            assigned.update(self.data["sessions"][sk]["participants"])
+        true_indiv = []
+        others = []
+        for n in sorted(assigned, key=str.lower):
+            info = self.data["participants"].get(n, {})
+            if (info.get("club") or "").strip() == "":
+                true_indiv.append(n)
+            else:
+                others.append(n)
+        items = []
+        if true_indiv:
+            items.append(L["inv_individuals_group"])
+            items.extend(true_indiv)
+        if others:
+            if items:
+                items.append(L["inv_separator"])
+            items.append(L["inv_others_group"])
+            items.extend(others)
+        return items
+
+    def invoice_quantity_for_club(self, club_name):
+        """Sum of round-assignments across all participants whose club matches.
+
+        Counts assignments to rounds (Manche 1/2/3/Final) regardless of catches.
+        """
+        target = (club_name or "").strip().lower()
+        qty = 0
+        for sk in SESSION_KEYS:
+            for n in self.data["sessions"][sk]["participants"]:
+                info = self.data["participants"].get(n, {})
+                if (info.get("club") or "").strip().lower() == target:
+                    qty += 1
+        return qty
+
+    def invoice_quantity_for_individual(self, name):
+        qty = 0
+        for sk in SESSION_KEYS:
+            if name in self.data["sessions"][sk]["participants"]:
+                qty += 1
+        return qty
+
+    def _is_separator_label(self, s):
+        L = LANGUAGES[self.lang]
+        return s in (L["inv_individuals_group"], L["inv_others_group"], L["inv_separator"])
+
+    def open_invoices_manager(self):
+        if not self.check_event_details():
+            return
+        self.update_event()
+        L = LANGUAGES[self.lang]
+
+        win = Toplevel(self.root)
+        win.title(L["manage_invoices"])
+        win.transient(self.root)
+        win.grab_set()
+        win.geometry("840x440")
+
+        outer = ttk.Frame(win, padding=10)
+        outer.pack(fill="both", expand=True)
+        # Pack the button bar FIRST so it survives the expanding tree.
+        btns = ttk.Frame(outer)
+        btns.pack(side="bottom", fill="x", pady=(8, 0))
+
+        cols = ("number", "date", "client", "amount")
+        headers = [L["inv_number"], L["inv_date"], L["inv_col_client"], L["inv_col_amount"]]
+        widths = [160, 110, 340, 100]
+        tv = ttk.Treeview(outer, columns=cols, show="headings", height=14)
+        for c, h, w in zip(cols, headers, widths):
+            tv.heading(c, text=h)
+            tv.column(c, width=w, anchor="w" if c in ("number", "client") else "center")
+        sb = ttk.Scrollbar(outer, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        tv.pack(side="top", fill="both", expand=True)
+
+        def refresh():
+            tv.delete(*tv.get_children())
+            invs = self.data.get("invoices", [])
+            if not invs:
+                tv.insert("", "end", values=("", "", L["no_invoices"], ""))
+                return
+            for idx, inv in enumerate(invs):
+                tv.insert("", "end", iid=str(idx), values=(
+                    inv.get("number", ""),
+                    inv.get("date", ""),
+                    inv.get("recipient_name", ""),
+                    self.fmt_money(inv.get("amount", 0))))
+
+        def selected_index():
+            sel = tv.selection()
+            if not sel:
+                messagebox.showinfo(L["manage_invoices"], L["select_row"])
+                return None
+            try:
+                return int(sel[0])
+            except ValueError:
+                return None
+
+        def do_new():
+            self.open_invoice_form(on_done=refresh)
+
+        def do_edit():
+            idx = selected_index()
+            if idx is None:
+                return
+            self.open_invoice_form(edit_index=idx, on_done=refresh)
+
+        def do_reprint():
+            idx = selected_index()
+            if idx is None:
+                return
+            inv = self.data["invoices"][idx]
+            try:
+                self.write_invoice_pdf(inv)
+                messagebox.showinfo("", L["inv_saved"])
+            except Exception as e:
+                logging.error(f"Reprint failed: {e}")
+                messagebox.showerror("Error", str(e))
+
+        def do_delete():
+            idx = selected_index()
+            if idx is None:
+                return
+            if self.custom_dialog(L["manage_invoices"], L["confirm_delete_invoice"],
+                                  [(L["yes"], True), (L["no"], False)]):
+                inv = self.data["invoices"].pop(idx)
+                # Best-effort: remove the on-disk PDF; the number stays burned.
+                try:
+                    pdf_path = self._invoice_pdf_path(inv)
+                    if os.path.exists(pdf_path):
+                        os.remove(pdf_path)
+                except Exception as e:
+                    logging.warning(f"Could not delete invoice PDF: {e}")
+                self.update_event()
+                refresh()
+
+        ttk.Button(btns, text=L["new_invoice"], command=do_new).pack(side="left", padx=3)
+        ttk.Button(btns, text=L["edit"], command=do_edit).pack(side="left", padx=3)
+        ttk.Button(btns, text=L["reprint_invoice"], command=do_reprint).pack(side="left", padx=3)
+        ttk.Button(btns, text=L["delete"], command=do_delete).pack(side="left", padx=3)
+        ttk.Button(btns, text=L["close"], command=win.destroy).pack(side="right", padx=3)
+        refresh()
+        win.wait_window()
+
+    def fmt_money(self, value):
+        """Localised price: '30' if integer, otherwise '30,50' (FR/DE/LB) or '30.50' (EN)."""
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return str(value)
+        if abs(v - round(v)) < 0.005:
+            s = f"{int(round(v))}"
+        else:
+            s = f"{v:.2f}"
+        if self.lang in ["French", "German", "Luxembourgish"]:
+            s = s.replace(".", ",")
+        return s + "€"
+
+    def _next_invoice_number(self, recompute_from=None):
+        """Return next sequence integer and increment the in-memory counter."""
+        if self.data.get("invoice_next") is None:
+            start = recompute_from
+            if start is None:
+                start = self.data.get("invoice_seq_start")
+            if start is None:
+                start = 1
+            self.data["invoice_next"] = int(start)
+        n = int(self.data["invoice_next"])
+        self.data["invoice_next"] = n + 1
+        return n
+
+    def _invoice_pdf_path(self, inv):
+        event = self.data["event"]
+        event_name_file = str(event.get("name", "event")).replace(" ", "_")
+        event_date = str(event.get("date", datetime.now().strftime("%d/%m/%Y")))
+        try:
+            date_obj = datetime.strptime(event_date, "%d/%m/%Y")
+            date_str = date_obj.strftime("%Y%m%d")
+        except ValueError:
+            date_str = datetime.now().strftime("%Y%m%d")
+        folder = f"{date_str}_{event_name_file}"
+        os.makedirs(os.path.join(folder, "invoices"), exist_ok=True)
+        return os.path.join(folder, "invoices", f"{inv.get('number', 'invoice')}.pdf")
+
+    def open_invoice_form(self, edit_index=None, on_done=None):
+        if not self.check_event_details():
+            return
+        L = LANGUAGES[self.lang]
+        editing = edit_index is not None
+        existing = self.data["invoices"][edit_index] if editing else None
+
+        dlg = Toplevel(self.root)
+        dlg.title(L["edit_invoice"] if editing else L["new_invoice"])
+        dlg.transient(self.root)
+        dlg.grab_set()
+        dlg.geometry("540x540")
+
+        frame = ttk.Frame(dlg, padding=14)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(1, weight=1)
+
+        row = 0
+        # Starting sequence (only for the *first* invoice of the event).
+        if self.data.get("invoice_next") is None and self.data.get("invoice_seq_start") is None and not editing:
+            ttk.Label(frame, text=L["inv_starting_seq"], font=("Arial", self.font_size)).grid(row=row, column=0, sticky="w", pady=4)
+            seq_entry = ttk.Entry(frame, font=("Arial", self.font_size), width=10)
+            seq_entry.grid(row=row, column=1, pady=4, sticky="w")
+            seq_entry.insert(0, "1")
+            row += 1
+        else:
+            seq_entry = None
+
+        # Invoice number preview (read-only).
+        next_num_int = self.data.get("invoice_next")
+        if editing:
+            number_preview = existing.get("number", "")
+        else:
+            year = self.event_year()
+            prev = next_num_int if next_num_int is not None else (self.data.get("invoice_seq_start") or 1)
+            number_preview = f'{CONFIG.get("invoice_prefix", "INV")}-{int(prev):02d}-{year}'
+        ttk.Label(frame, text=L["inv_number"], font=("Arial", self.font_size)).grid(row=row, column=0, sticky="w", pady=4)
+        number_var = tk.StringVar(value=number_preview)
+        ttk.Entry(frame, textvariable=number_var, font=("Arial", self.font_size),
+                  state="readonly", width=22).grid(row=row, column=1, pady=4, sticky="w")
+        row += 1
+
+        # Date (defaults to event date, editable).
+        ttk.Label(frame, text=L["inv_date"], font=("Arial", self.font_size)).grid(row=row, column=0, sticky="w", pady=4)
+        date_entry = DateEntry(frame, font=("Arial", self.font_size), date_pattern="dd/mm/yyyy", width=14)
+        date_entry.grid(row=row, column=1, pady=4, sticky="w")
+        try:
+            init_date = existing["date"] if editing else self.data["event"].get("date")
+            date_entry.set_date(init_date)
+        except Exception:
+            date_entry.set_date(datetime.now())
+        row += 1
+
+        # Recipient type radios.
+        ttk.Label(frame, text=L["inv_recipient_type"], font=("Arial", self.font_size)).grid(row=row, column=0, sticky="w", pady=4)
+        type_var = tk.StringVar(value=(existing.get("recipient_type", "club") if editing else "club"))
+        rt_frame = ttk.Frame(frame)
+        rt_frame.grid(row=row, column=1, pady=4, sticky="w")
+        ttk.Radiobutton(rt_frame, text=L["inv_recipient_club"], variable=type_var, value="club",
+                        command=lambda: rebuild_recipient()).pack(side="left", padx=(0, 14))
+        ttk.Radiobutton(rt_frame, text=L["inv_recipient_individual"], variable=type_var, value="individual",
+                        command=lambda: rebuild_recipient()).pack(side="left")
+        row += 1
+
+        # Recipient dropdown (rebuilt when type changes).
+        rec_label = ttk.Label(frame, text=L["inv_select_club"], font=("Arial", self.font_size))
+        rec_label.grid(row=row, column=0, sticky="w", pady=4)
+        recipient_var = tk.StringVar(value=existing.get("recipient_name", "") if editing else "")
+        recipient_combo = ttk.Combobox(frame, textvariable=recipient_var, font=("Arial", self.font_size),
+                                       width=28, state="readonly")
+        recipient_combo.grid(row=row, column=1, pady=4, sticky="ew")
+        row += 1
+
+        # Description.
+        ttk.Label(frame, text=L["inv_description"], font=("Arial", self.font_size)).grid(row=row, column=0, sticky="w", pady=4)
+        desc_entry = ttk.Entry(frame, font=("Arial", self.font_size), width=32, validate="key",
+                               validatecommand=(self.root.register(self.validate_length), "%P"))
+        desc_entry.grid(row=row, column=1, pady=4, sticky="ew")
+        if editing:
+            desc_entry.insert(0, existing.get("description", ""))
+        else:
+            try:
+                ev_date = self.format_french_date(datetime.strptime(self.data["event"].get("date", ""), "%d/%m/%Y"))
+            except ValueError:
+                ev_date = ""
+            ev_name = self.data["event"].get("name", "")
+            desc_entry.insert(0, f"Manche Concours {ev_name} {ev_date}".strip())
+        row += 1
+
+        # Unit price.
+        ttk.Label(frame, text=L["inv_unit_price"], font=("Arial", self.font_size)).grid(row=row, column=0, sticky="w", pady=4)
+        price_entry = ttk.Entry(frame, font=("Arial", self.font_size), width=12, validate="key",
+                                validatecommand=(self.root.register(self.validate_number), "%P"))
+        price_entry.grid(row=row, column=1, pady=4, sticky="w")
+        if editing:
+            price_entry.insert(0, self.num_to_str(existing.get("unit_price", 0)))
+        row += 1
+
+        # Quantity (suggested + editable).
+        ttk.Label(frame, text=L["inv_quantity"], font=("Arial", self.font_size)).grid(row=row, column=0, sticky="w", pady=4)
+        qty_entry = ttk.Entry(frame, font=("Arial", self.font_size), width=12, validate="key",
+                              validatecommand=(self.root.register(self.validate_catches), "%P"))
+        qty_entry.grid(row=row, column=1, pady=4, sticky="w")
+        if editing:
+            qty_entry.insert(0, str(existing.get("quantity", 1)))
+        row += 1
+
+        def rebuild_recipient():
+            rt = type_var.get()
+            if rt == "club":
+                rec_label.config(text=L["inv_select_club"])
+                recipient_combo["values"] = self.invoice_clubs()
+            else:
+                rec_label.config(text=L["inv_select_individual"])
+                recipient_combo["values"] = self.invoice_individuals_dropdown()
+            if not editing:
+                recipient_var.set("")
+                qty_entry.delete(0, tk.END)
+
+        def on_recipient_picked(_evt=None):
+            chosen = recipient_var.get()
+            if self._is_separator_label(chosen):
+                recipient_var.set("")
+                return
+            if not chosen:
+                return
+            if type_var.get() == "club":
+                q = self.invoice_quantity_for_club(chosen)
+            else:
+                q = self.invoice_quantity_for_individual(chosen)
+            qty_entry.delete(0, tk.END)
+            qty_entry.insert(0, str(q))
+
+        recipient_combo.bind("<<ComboboxSelected>>", on_recipient_picked)
+        rebuild_recipient()
+        if editing:
+            recipient_var.set(existing.get("recipient_name", ""))
+
+        def do_save():
+            # Validate the chunk.
+            rt = type_var.get()
+            recipient = recipient_var.get().strip()
+            if not recipient or self._is_separator_label(recipient):
+                messagebox.showerror("Error", L["inv_missing_recipient"])
+                return
+            desc = desc_entry.get().strip()
+            if not desc:
+                messagebox.showerror("Error", L["inv_missing_description"])
+                return
+            try:
+                price = float(price_entry.get().replace(",", "."))
+                if price <= 0:
+                    raise ValueError
+                if round(price * 100) != price * 100:  # more than 2 decimals
+                    raise ValueError
+            except (ValueError, AttributeError):
+                messagebox.showerror("Error", L["inv_invalid_price"])
+                return
+            try:
+                qty = int(qty_entry.get())
+                if qty < 1:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror("Error", L["inv_invalid_qty"])
+                return
+            if rt == "individual" and qty > 4:
+                messagebox.showerror("Error", L["inv_qty_indiv_range"])
+                return
+
+            # Pick / preserve the sequence and full number.
+            if editing:
+                seq = existing["seq"]
+                full_number = existing["number"]
+            else:
+                if seq_entry is not None:
+                    try:
+                        start_val = int(seq_entry.get())
+                        if start_val < 1:
+                            raise ValueError
+                    except ValueError:
+                        messagebox.showerror("Error", L["inv_invalid_qty"])
+                        return
+                    self.data["invoice_seq_start"] = start_val
+                    self.data["invoice_next"] = start_val
+                seq = self._next_invoice_number()
+                full_number = f'{CONFIG.get("invoice_prefix", "INV")}-{seq:02d}-{self.event_year()}'
+
+            date_str = date_entry.get_date().strftime("%d/%m/%Y")
+            amount = round(qty * price, 2)
+
+            invoice = {
+                "seq": seq,
+                "number": full_number,
+                "date": date_str,
+                "recipient_type": rt,
+                "recipient_name": recipient,
+                "description": desc,
+                "unit_price": price,
+                "quantity": qty,
+                "amount": amount,
+            }
+            if editing:
+                self.data["invoices"][edit_index] = invoice
+            else:
+                self.data["invoices"].append(invoice)
+            self.update_event()
+            try:
+                self.write_invoice_pdf(invoice)
+                messagebox.showinfo("", L["inv_saved"])
+            except Exception as e:
+                logging.error(f"Invoice PDF failed: {e}")
+                messagebox.showerror("Error", f"PDF: {e}")
+                return
+            if on_done:
+                on_done()
+            dlg.destroy()
+
+        button_frame = ttk.Frame(frame)
+        button_frame.grid(row=row, column=0, columnspan=2, pady=14)
+        ttk.Button(button_frame, text=L["inv_save_generate"], command=do_save).pack(side=tk.LEFT, padx=4)
+        ttk.Button(button_frame, text=L["close"], command=dlg.destroy).pack(side=tk.LEFT, padx=4)
+        dlg.wait_window()
+
+    # --- invoice PDF writer (French, A4, fixed-layout) ------------
+    INV_BLUE_TOP = (45 / 255, 65 / 255, 160 / 255)        # vivid blue header
+    INV_BLUE_BOTTOM = (24 / 255, 35 / 255, 100 / 255)     # darker navy footer
+    INV_TEXT_DARK = (35 / 255, 35 / 255, 40 / 255)
+
+    def _fmt_invoice_amount(self, value):
+        """Invoice amount: '30€' when whole, '30,50€' otherwise (French)."""
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return f"{value}€"
+        if abs(v - round(v)) < 0.005:
+            return f"{int(round(v))}€"
+        return f"{v:.2f}".replace(".", ",") + "€"
+
+    def write_invoice_pdf(self, invoice):
+        """Render the French invoice PDF to its event folder."""
+        path = self._invoice_pdf_path(invoice)
+        c = _rlcanvas.Canvas(path, pagesize=A4)
+        W, H = A4
+
+        # --- watermark (drawn first, behind everything else) ---
+        wm = "watermark.png"
+        if os.path.exists(wm):
+            try:
+                c.saveState()
+                c.setFillAlpha(0.12)
+                size = 480
+                c.drawImage(wm, (W - size) / 2, (H - size) / 2, width=size, height=size,
+                            mask="auto", preserveAspectRatio=True)
+                c.restoreState()
+            except Exception as exc:
+                logging.warning(f"Watermark draw failed: {exc}")
+
+        # --- top blue banner -----------------------------------------
+        banner_h = 180
+        c.setFillColorRGB(*self.INV_BLUE_TOP)
+        c.rect(0, H - banner_h, W, banner_h, stroke=0, fill=1)
+
+        # FACTURE - big white
+        c.setFillColorRGB(1, 1, 1)
+        c.setFont("Helvetica-Bold", 70)
+        c.drawString(40, H - banner_h + 60, "FACTURE")
+
+        # Right block: date + invoice number
+        c.setFont("Helvetica", 12)
+        try:
+            inv_dt = datetime.strptime(invoice["date"], "%d/%m/%Y")
+            date_str = self.format_french_date(inv_dt)
+        except (ValueError, KeyError):
+            date_str = invoice.get("date", "")
+        c.drawRightString(W - 40, H - banner_h + 100, date_str)
+        c.setFont("Helvetica-Bold", 13)
+        c.drawRightString(W - 40, H - banner_h + 80,
+                          f"Numéro de facture n°{invoice.get('seq', '')}")
+
+        # --- white body ---------------------------------------------
+        body_top = H - banner_h - 30
+        c.setFillColorRGB(*self.INV_TEXT_DARK)
+
+        # CLIENT block
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(40, body_top, "CLIENT")
+        c.setFont("Helvetica", 12)
+        c.drawString(40, body_top - 22, invoice.get("recipient_name", ""))
+
+        # Long horizontal separator
+        sep_y = body_top - 56
+        c.setStrokeColorRGB(0.6, 0.6, 0.6)
+        c.setLineWidth(0.6)
+        c.line(40, sep_y, W - 40, sep_y)
+
+        # Table header
+        col_desc_x = 40
+        col_qty_x = 360
+        col_tva_x = 440
+        col_amt_x = W - 40   # right-aligned
+        header_y = sep_y - 90
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(col_desc_x, header_y, "Description")
+        c.drawString(col_qty_x, header_y, "Quantité")
+        c.drawString(col_tva_x, header_y, "TVA")
+        c.drawRightString(col_amt_x, header_y, "Amount")
+        c.setLineWidth(0.4)
+        c.line(40, header_y - 6, W - 40, header_y - 6)
+
+        # One line item
+        c.setFont("Helvetica", 11)
+        line_y = header_y - 30
+        c.drawString(col_desc_x, line_y, invoice.get("description", ""))
+        c.drawString(col_qty_x, line_y, str(invoice.get("quantity", "")))
+        c.drawString(col_tva_x, line_y, "0%")
+        amount_str = self._fmt_invoice_amount(invoice.get("amount", 0))
+        c.drawRightString(col_amt_x, line_y, amount_str)
+        c.line(40, line_y - 14, W - 40, line_y - 14)
+
+        # Totals stack on the right
+        totals = [
+            ("Sous-total", amount_str, False),
+            ("TVA", "0€", False),
+            ("Total", amount_str, True),
+        ]
+        tot_y = line_y - 38
+        for label, value, bold in totals:
+            c.setFont("Helvetica-Bold" if bold else "Helvetica", 11 if not bold else 12)
+            c.drawRightString(col_tva_x + 28, tot_y, label)
+            c.drawRightString(col_amt_x, tot_y, value)
+            tot_y -= 22
+        c.setLineWidth(0.4)
+        c.line(40, line_y - 28, W - 40, line_y - 28)
+
+        # Payment terms text
+        days = CONFIG.get("payment_terms_days", 30)
+        legal = CONFIG.get("issuer_legal_name", "")
+        terms = (f"À transférer sur le compte courant de {legal} dans un "
+                 f"délai de {days} jours calendaires à compter de la date d'émission")
+        c.setFont("Helvetica", 10)
+        terms_y = tot_y - 30
+        # naive word wrap to fit within body width
+        words = terms.split()
+        max_w = W - 80
+        line = ""
+        for w in words:
+            test = (line + " " + w).strip()
+            if c.stringWidth(test, "Helvetica", 10) <= max_w:
+                line = test
+            else:
+                c.drawString(40, terms_y, line)
+                terms_y -= 14
+                line = w
+        if line:
+            c.drawString(40, terms_y, line)
+
+        # --- bottom navy banner -----------------------------------
+        foot_h = 200
+        c.setFillColorRGB(*self.INV_BLUE_BOTTOM)
+        c.rect(0, 0, W, foot_h, stroke=0, fill=1)
+        c.setFillColorRGB(1, 1, 1)
+
+        # left column: payment info
+        lx = 40
+        ly = foot_h - 30
+        c.setFont("Helvetica-Bold", 13)
+        c.drawString(lx, ly, "INFORMATIONS DE PAIEMENT")
+        c.setFont("Helvetica", 10)
+        ly -= 24
+        c.drawString(lx, ly, f"Nom: {CONFIG.get('bank_account_holder', '')}")
+        ly -= 16
+        c.drawString(lx, ly, f"Banque : {CONFIG.get('bank_name', '')}")
+        ly -= 16
+        c.drawString(lx, ly, "Numéro de compte :")
+        ly -= 16
+        c.drawString(lx, ly, " ".join(CONFIG.get("iban_groups", [])))
+
+        # right column: issuer block
+        rx = W / 2 - 10
+        ry = foot_h - 30
+        c.setFont("Helvetica-Bold", 13)
+        c.drawString(rx, ry, CONFIG.get("issuer_legal_name", "").upper())
+        c.setFont("Helvetica", 10)
+        ry -= 24
+        addr1 = (f"{CONFIG.get('issuer_house_number', '')}, "
+                 f"{CONFIG.get('issuer_street', '')}, "
+                 f"{CONFIG.get('issuer_postcode_country', '')}-"
+                 f"{CONFIG.get('issuer_postcode_digits', '')},")
+        c.drawString(rx, ry, addr1)
+        ry -= 16
+        addr2 = f"{CONFIG.get('issuer_city', '')}, {CONFIG.get('issuer_country', '')}"
+        c.drawString(rx, ry, addr2)
+        ry -= 16
+        c.drawString(rx, ry, CONFIG.get("issuer_phone", ""))
+        ry -= 16
+        c.drawString(rx, ry, CONFIG.get("issuer_email", ""))
+
+        c.showPage()
+        c.save()
+        return path
+
+    # --- Settings dialog -----------------------------------------
+    def _validate_iban_groups(self, groups):
+        if len(groups) != 6:
+            return False
+        g0 = groups[0]
+        if not (len(g0) == 4 and g0.isalpha()):
+            return False
+        g1 = groups[1]
+        if not (len(g1) == 4 and g1[:2].isalpha() and g1[2:].isdigit()):
+            return False
+        for g in groups[2:]:
+            if not (len(g) == 4 and g.isdigit()):
+                return False
+        return True
+
+    def open_settings_dialog(self):
+        L = LANGUAGES[self.lang]
+        dlg = Toplevel(self.root)
+        dlg.title(L["settings_title"])
+        dlg.transient(self.root)
+        dlg.grab_set()
+        dlg.geometry("640x680")
+
+        outer = ttk.Frame(dlg, padding=12)
+        outer.pack(fill="both", expand=True)
+        # Stable button bar at the bottom (pack first to survive scroll).
+        btn_bar = ttk.Frame(outer)
+        btn_bar.pack(side="bottom", fill="x", pady=(8, 0))
+
+        canvas = tk.Canvas(outer, borderwidth=0, highlightthickness=0)
+        scroll = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        body = ttk.Frame(canvas)
+        body.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=body, anchor="nw")
+        canvas.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        body.columnconfigure(1, weight=1)
+
+        entries = {}
+
+        def add_row(parent, key, label, width=32):
+            r = parent.grid_size()[1]
+            ttk.Label(parent, text=label, font=("Arial", self.font_size)).grid(
+                row=r, column=0, sticky="w", pady=3, padx=(0, 8))
+            e = ttk.Entry(parent, font=("Arial", self.font_size), width=width)
+            e.grid(row=r, column=1, sticky="ew", pady=3)
+            val = CONFIG.get(key, "")
+            if isinstance(val, list):
+                val = " ".join(val)
+            e.insert(0, str(val))
+            entries[key] = e
+
+        sec1 = ttk.LabelFrame(body, text=L["settings_invoice_section"], padding=8)
+        sec1.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        sec1.columnconfigure(1, weight=1)
+        for k, lk in [
+            ("invoice_prefix", "settings_field_invoice_prefix"),
+            ("issuer_name", "settings_field_issuer_name"),
+            ("issuer_legal_name", "settings_field_issuer_legal_name"),
+            ("issuer_house_number", "settings_field_house_number"),
+            ("issuer_street", "settings_field_street"),
+            ("issuer_postcode_country", "settings_field_postcode_country"),
+            ("issuer_postcode_digits", "settings_field_postcode_digits"),
+            ("issuer_city", "settings_field_city"),
+            ("issuer_country", "settings_field_country"),
+            ("issuer_phone", "settings_field_phone"),
+            ("issuer_email", "settings_field_email"),
+        ]:
+            add_row(sec1, k, L[lk])
+
+        sec2 = ttk.LabelFrame(body, text=L["settings_bank_section"], padding=8)
+        sec2.grid(row=1, column=0, columnspan=2, sticky="ew")
+        sec2.columnconfigure(1, weight=1)
+        for k, lk in [
+            ("bank_account_holder", "settings_field_bank_account_holder"),
+            ("bank_name", "settings_field_bank_name"),
+            ("iban_groups", "settings_field_iban"),
+            ("payment_terms_days", "settings_field_payment_terms"),
+        ]:
+            add_row(sec2, k, L[lk])
+
+        def do_save():
+            new_cfg = dict(CONFIG)
+            for k, e in entries.items():
+                new_cfg[k] = e.get().strip()
+            # Special parses / validations
+            # IBAN
+            raw = new_cfg.get("iban_groups", "")
+            raw_norm = "".join(raw.split()).upper()
+            groups = [raw_norm[i:i + 4] for i in range(0, len(raw_norm), 4)]
+            if not self._validate_iban_groups(groups):
+                messagebox.showerror("Error", L["settings_invalid_iban"])
+                return
+            new_cfg["iban_groups"] = groups
+            # postcode
+            pc_country = new_cfg.get("issuer_postcode_country", "").upper()
+            pc_digits = new_cfg.get("issuer_postcode_digits", "")
+            if not (1 <= len(pc_country) <= 2 and pc_country.isalpha() and pc_digits.isdigit() and len(pc_digits) == 4):
+                messagebox.showerror("Error", L["settings_invalid_postcode"])
+                return
+            new_cfg["issuer_postcode_country"] = pc_country
+            # phone
+            phone = new_cfg.get("issuer_phone", "")
+            if phone and not all(ch.isdigit() or ch in "+ " for ch in phone):
+                messagebox.showerror("Error", L["settings_invalid_phone"])
+                return
+            # email
+            import re as _re
+            if not _re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", new_cfg.get("issuer_email", "")):
+                messagebox.showerror("Error", L["settings_invalid_email"])
+                return
+            # payment terms days -> int
+            try:
+                new_cfg["payment_terms_days"] = int(new_cfg.get("payment_terms_days", 30))
+            except ValueError:
+                new_cfg["payment_terms_days"] = 30
+            if save_config(new_cfg):
+                messagebox.showinfo("", L["settings_saved"])
+                dlg.destroy()
+
+        ttk.Button(btn_bar, text=L["settings_save"], command=do_save).pack(side="left", padx=4)
+        ttk.Button(btn_bar, text=L["close"], command=dlg.destroy).pack(side="right", padx=4)
         dlg.wait_window()
 
     def generate_report(self):

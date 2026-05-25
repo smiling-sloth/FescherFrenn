@@ -2,15 +2,15 @@
 
 A desktop application for managing fishing competitions for **Fëscherfrënn
 Stengefort**: maintaining a roster of participants, assigning them to each
-round of the competition, logging catches in real time, and generating
-result reports.
+round of the competition, logging catches in real time, generating result
+reports, and **issuing invoices**.
 
 It is built with a deliberately simple, large-font interface so that it can be
 operated by non-technical users during a live event.
 
-- **Languages:** English, French, German, Luxembourgish
+- **Languages:** English, French, German, Luxembourgish (invoices are French)
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 2.2
+- **Version:** 3.0
 - **License:** MIT
 
 ---
@@ -19,31 +19,38 @@ operated by non-technical users during a live event.
 
 - Single-screen workflow with a round selector
   (**Round 1 / 2 / 3 / Final**, localised per language)
-- Live rankings shown in two panels: the **current round** on the left and the
-  **overall standings across all rounds** (pooled per participant) on the right
+- Two-panel live rankings: current round + overall pooled standings
 - Ranking categories, in order: Total Weight, Most Catches, Longest Fish,
-  Heaviest Fish
-- **Optional length & type tracking** (event-level setting, off by default).
-  When off, the length/type inputs are locked, the Longest/Heaviest rankings
-  are shown greyed out and not counted, and the reports use portrait layout.
-  When on, the reports switch to landscape and include the extra columns.
-- Pre-load the full **competition roster** with each participant's
-  optional club, category (Senior, Master, Veteran, Lady, U20, U15, U10) and
-  remark, then assign them to whichever rounds they actually fish
-- Manage Participants window: add, edit, rename and remove. Names already
-  assigned to the current round are hidden from the roster list, so each
-  person is assigned once per round.
-- Edit Catches window to correct or delete a recorded catch (weight, count,
-  and — when tracked — length and type; participant and time stay fixed)
-- **Round-scoped PDF reports** with a settings panel:
-  - Event Summary for the selected round (always included)
-  - Individual participant pages (optional)
-  - Combined Ranking across all rounds (optional, Final only)
-- Per-round output filenames, so each round's report is preserved
-- Export / import an event as a JSON file
-- Automatic backups on every save (`~/FescherfrennData/backups`)
-- Built-in multilingual user manual (**Help** button)
-- All translatable strings live in `translations.json`
+  Heaviest Fish (Longest/Heaviest greyed out when length/type tracking is off)
+- Optional length & type tracking (event-level toggle, locks once the event
+  is locked). When enabled, num-catches is locked to 1 per row.
+- Manage Participants window with full roster on the left and the round's
+  assigned participants on the right
+- Edit Catches window for in-event corrections
+- **Round-scoped PDF reports** with a settings panel (Event Summary always
+  on; Individual reports and Combined Ranking optional; Combined only on
+  Final). Portrait when length/type tracking is off, landscape when on.
+
+### New in v3.0
+
+- **Invoicing module**:
+  - Invoice Manager (New / Edit / Reprint / Delete) per event
+  - Choose Club (distinct clubs of assigned participants) or Individual
+    (true individuals first, then a non-selectable separator, then every
+    other assigned participant)
+  - Quantity suggested automatically (sum of round assignments) and editable
+  - Invoice number auto-assigned `PREFIX-NN-YYYY`, read-only on the form,
+    starts from a value set on the first invoice of the event
+  - French A4 PDF matching the club's invoice template; supports an
+    optional `watermark.png` (~480×480, 12% opacity, centred — skipped
+    silently if absent)
+  - Invoices saved to `{event_folder}/invoices/`
+- **Settings dialog** (`config.json`): invoice prefix, issuer details, bank,
+  IBAN, payment terms. Editable in-app, with validation, or by hand.
+- **Extended in-app Help** in English (other-language translations planned
+  for a follow-up release).
+- **Num-catches lock**: when length/type is enabled, num-catches is forced
+  to 1 in both Log Catch and Edit Catches.
 
 ---
 
@@ -51,8 +58,9 @@ operated by non-technical users during a live event.
 
 Requires **Python 3.9+** and these companion files in the same folder:
 
-- `translations.json`, `manual_translations.json`
-- `logo.png` (optional `logo.ico` for the Windows icon)
+- `translations.json`, `manual_translations.json`, `config.json`
+- `logo.png` (optional `logo.ico` on Windows, optional `watermark.png` on
+  invoices)
 
 ```bash
 pip install tkcalendar reportlab
@@ -67,9 +75,13 @@ Linux you may need `sudo apt install python3-tk`.
 ## Building the executables
 
 Builds are produced automatically by GitHub Actions
-(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v2.2`
-builds the Windows `.exe` and macOS `.app`, then drafts a release with both
-attached. To build manually with PyInstaller:
+(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.0`
+builds the Windows `.exe` and macOS `.app` and drafts a release with both
+attached. **Update the workflow once for v3.0 to bundle the new
+`config.json`:** add `--add-data "config.json;."` (or `:`) alongside the
+other `--add-data` lines.
+
+To build manually with PyInstaller:
 
 ```bash
 pip install pyinstaller
@@ -78,78 +90,64 @@ pyinstaller --onedir --windowed --name Fescherfrenn ^
   --add-data "logo.png;." ^
   --add-data "translations.json;." ^
   --add-data "manual_translations.json;." ^
+  --add-data "config.json;." ^
   --hidden-import babel.numbers ^
   fescherfrenn.py
 ```
 
-(`--onedir` for fast startup; on macOS/Linux replace `;` with `:` and drop
-`--icon logo.ico`.)
+(On macOS/Linux, `;` becomes `:` in `--add-data` and drop `--icon`.)
 
 ---
 
 ## Workflow
 
-1. Enter the event name, location and date. Decide whether to tick
-   **Record fish length & type** — this is fixed once the event locks.
-2. Click **Manage Participants** to load the roster (event details lock here).
-3. With a round selected, move participants from the roster into that round.
-4. Log catches for the selected round (weight in grams; length/type only if
-   enabled).
-5. After each round, **Generate Report** for a single-round PDF; switch the
-   round drop-down and repeat.
-6. Use **Edit Catches** to fix an erroneous entry.
-7. On the Final, optionally tick **Combined Ranking - All Rounds** and/or
-   **Individual Reports**, then generate the wrap-up PDF.
+1. Enter event name, location, date. Tick **Record fish length & type** if
+   you want to track that detail. Open **Manage Participants** — event
+   details lock here.
+2. Move participants from the roster into the relevant rounds.
+3. Log catches per round, generate per-round reports as you go.
+4. Use **Edit Catches** to fix any erroneous entry.
+5. On the Final, enable the optional report sections you want.
+6. Click **Invoices** to issue invoices (per club or per individual).
 
-Output filenames: `YYYYMMDD_Event_manche1.pdf` … `_final.pdf`.
-
----
-
-## Data and backups
-
-- Each event lives in its own `YYYYMMDD_EventName` folder (JSON + PDFs).
-- Every save also writes a timestamped backup to `~/FescherfrennData/backups`.
-- Errors are logged to `fescherfrenn.log`.
-- Old v1.x events still open (their catches fold into Round 1).
+Output naming:
+- Reports: `YYYYMMDD_Event_manche1.pdf` … `_final.pdf`
+- Invoices: `YYYYMMDD_Event/invoices/PREFIX-NN-YYYY.pdf`
 
 ---
 
 ## Changelog
 
+### v3.0
+- Invoicing module: Manager + Form + French A4 PDF with optional watermark
+  support; per-event invoice numbering; Club / Individual recipients;
+  automatic quantity suggestion (editable).
+- Application Settings (`config.json`) for issuer details, bank, IBAN,
+  invoice prefix and payment terms; in-app Settings dialog with validation.
+- Num-catches locked to 1 when length/type tracking is enabled.
+- Extended in-app Help in English; other languages flagged for a follow-up.
+
 ### v2.2
-- **Fixed:** Edit Catches, and the Manage Participants buttons, were
-  effectively invisible due to a Tkinter pack-ordering issue (an expanding
-  widget was packed before the button bar). Catches are now editable.
-- **Optional length & type** tracking as an event-level setting (default off):
-  locks the inputs, greys out and excludes Longest/Heaviest rankings, and
-  switches reports between portrait (off) and landscape (on).
-- **Overall standings panel** added next to the per-round live rankings,
-  pooled per participant across all rounds.
-- Ranking order standardised to Total Weight -> Most Catches -> Longest Fish
-  -> Heaviest Fish, in both the app and the reports.
-- **"Manche" localised**: Round (EN), Manche (FR), Runde (DE), Manche (LB),
-  everywhere including reports.
-- Assigning a participant to a round now hides them from the roster list
-  (one assignment per round) instead of allowing repeats.
-- Removed the duplicate Remove button in Manage Participants; fixed the
-  unlabelled/clipped Close button.
-- Edit / Log Catch buttons swapped per request.
-- Version number shown bottom-left in the app (not in reports).
-- Copyright line corrected to a running span with the organisation name:
-  `© 2025 - <current year> Fëscherfrënn Stengefort 2010`, app and reports.
-- French: "compétition" -> "concours" throughout.
+- Fixed an invisible-button bug in Edit Catches and Manage Participants
+  (Tkinter pack ordering).
+- Event-level optional length & type tracking with portrait/landscape
+  reports.
+- Overall standings panel pooled across all rounds.
+- "Manche" localised: Round (EN), Manche (FR), Runde (DE), Manche (LB).
+- Move-not-copy in the manager.
+- Copyright line as a running year span with the organisation name.
 
 ### v2.1
-- Round-scoped reports; Report Settings panel (Individual / Combined toggles);
-  per-round output filenames; repeating table headers on long tables.
+- Round-scoped reports, Report Settings panel, per-round filenames,
+  repeating table headers on long tables.
 
 ### v2.0
-- 3 Rounds + Final structure; Manage Participants window; Edit Catches window;
-  combined ranking in the PDF; landscape report layout; translations extracted
-  to `translations.json`.
+- 3 rounds + Final structure, Manage Participants window, Edit Catches
+  window, combined ranking in the PDF, landscape report layout,
+  translations extracted to `translations.json`.
 
 ### v1.2
-- Weight unit kg -> g; category display fixed in reports; copyright year fix.
+- Weight unit kg -> g, category display fix in reports, copyright year fix.
 
 ### v1.1
 - Participant club / category / remark fields, multilingual manual,

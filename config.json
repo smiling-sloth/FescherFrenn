@@ -1,0 +1,17 @@
+{
+  "invoice_prefix": "FFS2010",
+  "issuer_name": "Fëscherfrënn Stengefort 2010",
+  "issuer_legal_name": "Fëscherfrënn Stengefort 2010 a.s.b.l.",
+  "issuer_house_number": "44",
+  "issuer_street": "rue de Sterpenich",
+  "issuer_postcode_country": "L",
+  "issuer_postcode_digits": "8379",
+  "issuer_city": "Kleinbettingen",
+  "issuer_country": "Luxembourg",
+  "issuer_phone": "+352 621 22 40 56",
+  "issuer_email": "fescherfrenn@outlook.com",
+  "bank_account_holder": "Fescherfrenn Stengefort 2010",
+  "bank_name": "Banque Raiffeisen",
+  "iban_groups": ["CCRA", "LU85", "0090", "0000", "0597", "1635"],
+  "payment_terms_days": 30
+}
