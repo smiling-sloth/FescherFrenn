@@ -10,7 +10,7 @@ operated by non-technical users during a live event.
 
 - **Languages:** English, French, German, Luxembourgish (invoices are French)
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 3.0
+- **Version:** 3.0.1
 - **License:** MIT
 
 ---
@@ -30,27 +30,20 @@ operated by non-technical users during a live event.
 - **Round-scoped PDF reports** with a settings panel (Event Summary always
   on; Individual reports and Combined Ranking optional; Combined only on
   Final). Portrait when length/type tracking is off, landscape when on.
-
-### New in v3.0
-
-- **Invoicing module**:
-  - Invoice Manager (New / Edit / Reprint / Delete) per event
+- **Invoicing module** (per event):
+  - Invoice Manager (New / Edit / Reprint / Delete)
   - Choose Club (distinct clubs of assigned participants) or Individual
-    (true individuals first, then a non-selectable separator, then every
-    other assigned participant)
+    (true individuals first, separator, then every other assigned
+    participant)
   - Quantity suggested automatically (sum of round assignments) and editable
-  - Invoice number auto-assigned `PREFIX-NN-YYYY`, read-only on the form,
-    starts from a value set on the first invoice of the event
+  - Invoice number auto-assigned `PREFIX-NN-YYYY`, read-only on the form
   - French A4 PDF matching the club's invoice template; supports an
     optional `watermark.png` (~480×480, 12% opacity, centred — skipped
     silently if absent)
-  - Invoices saved to `{event_folder}/invoices/`
 - **Settings dialog** (`config.json`): invoice prefix, issuer details, bank,
-  IBAN, payment terms. Editable in-app, with validation, or by hand.
-- **Extended in-app Help** in English (other-language translations planned
-  for a follow-up release).
-- **Num-catches lock**: when length/type is enabled, num-catches is forced
-  to 1 in both Log Catch and Edit Catches.
+  IBAN, payment terms — editable in-app with validation.
+- **Extended in-app Help** with a left-side section navigator, in English,
+  French, German, and Luxembourgish.
 
 ---
 
@@ -58,7 +51,7 @@ operated by non-technical users during a live event.
 
 Requires **Python 3.9+** and these companion files in the same folder:
 
-- `translations.json`, `manual_translations.json`, `config.json`
+- `translations.json`, `manual_translations.json`, `config.json`, `help.json`
 - `logo.png` (optional `logo.ico` on Windows, optional `watermark.png` on
   invoices)
 
@@ -75,11 +68,16 @@ Linux you may need `sudo apt install python3-tk`.
 ## Building the executables
 
 Builds are produced automatically by GitHub Actions
-(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.0`
+(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.0.1`
 builds the Windows `.exe` and macOS `.app` and drafts a release with both
-attached. **Update the workflow once for v3.0 to bundle the new
-`config.json`:** add `--add-data "config.json;."` (or `:`) alongside the
-other `--add-data` lines.
+attached. The workflow already bundles `config.json` (added in v3.0). For
+v3.0.1, also add `help.json` to the same loop:
+
+```yaml
+for f in logo.png logo.ico translations.json manual_translations.json config.json help.json; do
+  [ -f "$f" ] && ARGS="$ARGS --add-data $f;."
+done
+```
 
 To build manually with PyInstaller:
 
@@ -91,6 +89,7 @@ pyinstaller --onedir --windowed --name Fescherfrenn ^
   --add-data "translations.json;." ^
   --add-data "manual_translations.json;." ^
   --add-data "config.json;." ^
+  --add-data "help.json;." ^
   --hidden-import babel.numbers ^
   fescherfrenn.py
 ```
@@ -118,6 +117,24 @@ Output naming:
 
 ## Changelog
 
+### v3.0.1
+- Invoice form date picker now opens correctly (removed a modal grab that
+  was hiding tkcalendar's calendar popup).
+- Invoice header now shows the full invoice number on its own line
+  underneath the "Numéro de facture" label.
+- Issuer legal name in the invoice footer splits onto two lines on
+  recognised legal-form suffixes (a.s.b.l., S.A., S.à r.l., GmbH, …).
+  Layout reserves the second row even for short names, keeping both
+  footer columns symmetric.
+- Footer banner reduced from 200pt to 160pt now that the layout is
+  symmetric and predictable.
+- Lighter blues used for invoice header and footer to reduce toner usage
+  while keeping white text legible.
+- In-app Help redesigned with a left-side section navigator and a
+  scrollable reader pane on the right. Sections now live in `help.json`.
+- Help content fully translated into French, German, and Luxembourgish
+  (10 sections each).
+
 ### v3.0
 - Invoicing module: Manager + Form + French A4 PDF with optional watermark
   support; per-event invoice numbering; Club / Individual recipients;
@@ -125,7 +142,7 @@ Output naming:
 - Application Settings (`config.json`) for issuer details, bank, IBAN,
   invoice prefix and payment terms; in-app Settings dialog with validation.
 - Num-catches locked to 1 when length/type tracking is enabled.
-- Extended in-app Help in English; other languages flagged for a follow-up.
+- Extended in-app Help in English.
 
 ### v2.2
 - Fixed an invisible-button bug in Edit Catches and Manage Participants

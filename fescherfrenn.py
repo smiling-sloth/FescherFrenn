@@ -21,13 +21,14 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "3.0"
+APP_VERSION = "3.0.1"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 TRANSLATIONS_FILE = "translations.json"
 CONFIG_FILE = "config.json"
+HELP_FILE = "help.json"
 SESSION_KEYS = ["manche1", "manche2", "manche3", "final"]
 
 DEFAULT_CONFIG = {
@@ -89,6 +90,31 @@ def save_config(cfg):
     return True
 
 
+def load_help():
+    """Load help.json next to the script. Returns a dict: lang -> [{title, body}, ...].
+
+    Falls back to an empty per-language list if the file is missing or invalid.
+    """
+    path = _resource_path(HELP_FILE)
+    default = {lang: [] for lang in ("English", "French", "German", "Luxembourgish")}
+    if not os.path.exists(path):
+        logging.warning(f"{HELP_FILE} not found; help dialog will be empty.")
+        return default
+    try:
+        with open(path, 'r', encoding='utf-8') as fh:
+            loaded = json.load(fh)
+        if not isinstance(loaded, dict):
+            return default
+        out = dict(default)
+        for lang, sections in loaded.items():
+            if isinstance(sections, list):
+                out[lang] = sections
+        return out
+    except Exception as exc:
+        logging.error(f"Failed to load {HELP_FILE}: {exc}")
+        return default
+
+
 def _resource_path(name):
     """Locate a bundled resource whether running from source or a PyInstaller bundle."""
     import sys
@@ -119,6 +145,7 @@ def load_translations():
 
 LANGUAGES = load_translations()
 CONFIG = load_config()
+HELP = load_help()
 
 
 def empty_sessions():
@@ -684,29 +711,92 @@ class FishingApp:
         widget.bind("<Leave>", hide)
 
     def show_help(self):
-        help_window = Toplevel(self.root)
-        help_window.title(LANGUAGES[self.lang]["help"])
-        help_window.geometry("600x400")
-        help_window.transient(self.root)
-        help_window.grab_set()
+        """Help dialog with a left-side section list and a right-side reader pane.
 
-        canvas = tk.Canvas(help_window)
-        scrollbar = ttk.Scrollbar(help_window, orient="vertical", command=canvas.yview)
-        help_frame = ttk.Frame(canvas)
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        canvas.create_window((0, 0), window=help_frame, anchor="nw")
-        help_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        Sections come from help.json (one list per language). If the current
+        language has no sections (e.g. translation pending), falls back to the
+        English sections with a small notice.
+        """
+        L = LANGUAGES[self.lang]
+        sections = HELP.get(self.lang) or []
+        fallback_used = False
+        if not sections:
+            sections = HELP.get("English") or []
+            fallback_used = True
 
-        ttk.Label(help_frame, text=LANGUAGES[self.lang]["help_manual"], font=("Arial", self.font_size-2), wraplength=550, justify="left").pack(padx=5, pady=5)
-        email_label = tk.Label(help_frame, text="fescherfrenn@outlook.com", font=("Arial", self.font_size-2), foreground="blue", cursor="hand2")
-        email_label.pack(anchor="w", padx=5)
-        email_label.bind("<Button-1>", lambda e: webbrowser.open("mailto:fescherfrenn@outlook.com"))
+        win = Toplevel(self.root)
+        win.title(L["help"])
+        win.transient(self.root)
+        win.geometry("900x560")
 
-        close_btn = ttk.Button(help_frame, text=LANGUAGES[self.lang]["close"], command=help_window.destroy)
-        close_btn.pack(pady=5)
-        help_window.bind("<Return>", lambda e: help_window.destroy())
+        outer = ttk.Frame(win, padding=8)
+        outer.pack(fill="both", expand=True)
+        outer.columnconfigure(0, weight=0, minsize=210)
+        outer.columnconfigure(1, weight=1)
+        outer.rowconfigure(0, weight=1)
+
+        # Left: section list
+        nav_frame = ttk.LabelFrame(outer, text=L["help"], padding=4)
+        nav_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        nav = tk.Listbox(nav_frame, font=("Arial", self.font_size - 2),
+                         activestyle="dotbox", exportselection=False, width=26)
+        nav_sb = ttk.Scrollbar(nav_frame, orient="vertical", command=nav.yview)
+        nav.configure(yscrollcommand=nav_sb.set)
+        nav_sb.pack(side="right", fill="y")
+        nav.pack(side="left", fill="both", expand=True)
+        for sec in sections:
+            nav.insert(tk.END, sec.get("title", ""))
+
+        # Right: reader
+        reader_frame = ttk.Frame(outer)
+        reader_frame.grid(row=0, column=1, sticky="nsew")
+        body = tk.Text(reader_frame, wrap="word", relief="flat",
+                       font=("Arial", self.font_size - 2), padx=10, pady=8,
+                       borderwidth=0, highlightthickness=0)
+        body_sb = ttk.Scrollbar(reader_frame, orient="vertical", command=body.yview)
+        body.configure(yscrollcommand=body_sb.set, state="disabled")
+        body_sb.pack(side="right", fill="y")
+        body.pack(side="left", fill="both", expand=True)
+        body.tag_configure("title", font=("Arial", self.font_size, "bold"),
+                           spacing3=8)
+        body.tag_configure("notice", foreground="#888888",
+                           font=("Arial", self.font_size - 3, "italic"),
+                           spacing3=10)
+
+        def show_section(idx):
+            if not sections:
+                return
+            sec = sections[idx]
+            body.config(state="normal")
+            body.delete("1.0", tk.END)
+            if fallback_used:
+                body.insert(tk.END,
+                            "(Detailed manual not yet available in this language; "
+                            "showing English.)\n\n", "notice")
+            body.insert(tk.END, sec.get("title", "") + "\n", "title")
+            body.insert(tk.END, sec.get("body", ""))
+            body.config(state="disabled")
+
+        def on_select(_evt=None):
+            sel = nav.curselection()
+            if sel:
+                show_section(sel[0])
+
+        nav.bind("<<ListboxSelect>>", on_select)
+        if sections:
+            nav.selection_set(0)
+            nav.activate(0)
+            show_section(0)
+
+        # Bottom row: contact + close
+        bottom = ttk.Frame(win)
+        bottom.pack(side="bottom", fill="x", padx=8, pady=(0, 8))
+        contact = tk.Label(bottom, text="fescherfrenn@outlook.com",
+                           font=("Arial", self.font_size - 3), foreground="blue", cursor="hand2")
+        contact.pack(side="left")
+        contact.bind("<Button-1>", lambda e: webbrowser.open("mailto:fescherfrenn@outlook.com"))
+        ttk.Button(bottom, text=L["close"], command=win.destroy).pack(side="right")
+        win.bind("<Return>", lambda e: win.destroy())
 
     def update_manche_participants_list(self):
         if not self.manche_participants_list:
@@ -1582,7 +1672,10 @@ class FishingApp:
         dlg = Toplevel(self.root)
         dlg.title(L["edit_invoice"] if editing else L["new_invoice"])
         dlg.transient(self.root)
-        dlg.grab_set()
+        # NOTE: do NOT call dlg.grab_set() here. tkcalendar's DateEntry popup
+        # opens as a separate Toplevel and is hidden behind a modal grab on
+        # this dialog. transient() is enough to keep the form on top of the
+        # main window without breaking the date picker.
         dlg.geometry("540x540")
 
         frame = ttk.Frame(dlg, padding=14)
@@ -1796,9 +1889,30 @@ class FishingApp:
         dlg.wait_window()
 
     # --- invoice PDF writer (French, A4, fixed-layout) ------------
-    INV_BLUE_TOP = (45 / 255, 65 / 255, 160 / 255)        # vivid blue header
-    INV_BLUE_BOTTOM = (24 / 255, 35 / 255, 100 / 255)     # darker navy footer
+    # Toner-friendly blues (lighter than v3.0): readable white-on-blue but
+    # noticeably less ink-heavy than the saturated reference.
+    INV_BLUE_TOP = (95 / 255, 120 / 255, 200 / 255)
+    INV_BLUE_BOTTOM = (75 / 255, 95 / 255, 170 / 255)
     INV_TEXT_DARK = (35 / 255, 35 / 255, 40 / 255)
+
+    LEGAL_SUFFIXES = (" a.s.b.l.", " a.s.b.l", " A.S.B.L.", " A.S.B.L",
+                      " ASBL", " S.A.", " S.A", " S.\u00e0 r.l.", " S.\u00e0r.l.",
+                      " s.\u00e0 r.l.", " s.\u00e0r.l.", " GmbH", " AG")
+
+    def _split_legal_name(self, name):
+        """Return (line1, line2) for the right-column issuer block.
+
+        Tries to detect a legal-form suffix (a.s.b.l., S.A., GmbH, ...) and put
+        it on line 2. If no suffix is found, line 2 is empty - but layout
+        always reserves space for it so the footer alignment stays symmetric.
+        """
+        name = (name or "").strip()
+        for sfx in self.LEGAL_SUFFIXES:
+            idx = name.lower().rfind(sfx.lower())
+            if idx > 0:
+                return name[:idx].strip(), name[idx:].strip()
+        return name, ""
+
 
     def _fmt_invoice_amount(self, value):
         """Invoice amount: '30€' when whole, '30,50€' otherwise (French)."""
@@ -1846,10 +1960,20 @@ class FishingApp:
             date_str = self.format_french_date(inv_dt)
         except (ValueError, KeyError):
             date_str = invoice.get("date", "")
-        c.drawRightString(W - 40, H - banner_h + 100, date_str)
+        # Date sits at the top; "Num\u00e9ro de facture" label and the full
+        # invoice number stack underneath on two separate lines.
+        c.drawRightString(W - 40, H - banner_h + 110, date_str)
         c.setFont("Helvetica-Bold", 13)
-        c.drawRightString(W - 40, H - banner_h + 80,
-                          f"Numéro de facture n°{invoice.get('seq', '')}")
+        c.drawRightString(W - 40, H - banner_h + 88, "Num\u00e9ro de facture")
+        c.setFont("Helvetica", 12)
+        full_number = invoice.get("number", "")
+        if not full_number:
+            seq = invoice.get("seq", "")
+            try:
+                full_number = f"{int(seq):02d}"
+            except (TypeError, ValueError):
+                full_number = str(seq)
+        c.drawRightString(W - 40, H - banner_h + 70, full_number)
 
         # --- white body ---------------------------------------------
         body_top = H - banner_h - 30
@@ -1928,45 +2052,55 @@ class FishingApp:
         if line:
             c.drawString(40, terms_y, line)
 
-        # --- bottom navy banner -----------------------------------
-        foot_h = 200
+        # --- bottom navy banner --------------------------------
+        # Symmetric 2-line header on both sides + 4 content lines = 6 lines.
+        # Banner height reduced from 200pt to 160pt with the new layout.
+        foot_h = 160
         c.setFillColorRGB(*self.INV_BLUE_BOTTOM)
         c.rect(0, 0, W, foot_h, stroke=0, fill=1)
         c.setFillColorRGB(1, 1, 1)
 
-        # left column: payment info
+        header_y = foot_h - 28
+        line_step = 16
+        content_y = header_y - 30  # 30pt gap below the header pair
+
+        # ----- LEFT column: payment info ---------------------------
         lx = 40
-        ly = foot_h - 30
         c.setFont("Helvetica-Bold", 13)
-        c.drawString(lx, ly, "INFORMATIONS DE PAIEMENT")
+        c.drawString(lx, header_y, "INFORMATIONS DE PAIEMENT")
+        # Second header line intentionally blank for layout parity with right.
+        ly = content_y
         c.setFont("Helvetica", 10)
-        ly -= 24
         c.drawString(lx, ly, f"Nom: {CONFIG.get('bank_account_holder', '')}")
-        ly -= 16
+        ly -= line_step
         c.drawString(lx, ly, f"Banque : {CONFIG.get('bank_name', '')}")
-        ly -= 16
+        ly -= line_step
         c.drawString(lx, ly, "Numéro de compte :")
-        ly -= 16
+        ly -= line_step
         c.drawString(lx, ly, " ".join(CONFIG.get("iban_groups", [])))
 
-        # right column: issuer block
+        # ----- RIGHT column: issuer (legal name in 2 lines) --------
         rx = W / 2 - 10
-        ry = foot_h - 30
+        line1, line2 = self._split_legal_name(CONFIG.get("issuer_legal_name", ""))
         c.setFont("Helvetica-Bold", 13)
-        c.drawString(rx, ry, CONFIG.get("issuer_legal_name", "").upper())
+        c.drawString(rx, header_y, line1.upper())
+        # Always advance even if line 2 is blank - keeps the row count even
+        # with the left side and keeps the layout predictable.
+        if line2:
+            c.drawString(rx, header_y - 18, line2.upper())
+        ry = content_y
         c.setFont("Helvetica", 10)
-        ry -= 24
         addr1 = (f"{CONFIG.get('issuer_house_number', '')}, "
                  f"{CONFIG.get('issuer_street', '')}, "
                  f"{CONFIG.get('issuer_postcode_country', '')}-"
                  f"{CONFIG.get('issuer_postcode_digits', '')},")
         c.drawString(rx, ry, addr1)
-        ry -= 16
+        ry -= line_step
         addr2 = f"{CONFIG.get('issuer_city', '')}, {CONFIG.get('issuer_country', '')}"
         c.drawString(rx, ry, addr2)
-        ry -= 16
+        ry -= line_step
         c.drawString(rx, ry, CONFIG.get("issuer_phone", ""))
-        ry -= 16
+        ry -= line_step
         c.drawString(rx, ry, CONFIG.get("issuer_email", ""))
 
         c.showPage()
