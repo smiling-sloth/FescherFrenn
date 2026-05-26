@@ -6,7 +6,7 @@
     },
     {
       "title": "2. The event",
-      "body": "Fill in Event Name, Location and Date. Optionally tick \"Record fish length & type\" if catches will be logged with those details.\nThe first time you click \"Manage Participants\", these event details lock - this protects against accidental edits during the competition. The length/type setting also locks at that moment.\nOld events from earlier versions of the app reopen automatically (their data is upgraded to the v3.0 schema on load)."
+      "body": "Fill in Event Name, Location and Date (Mandatory). Optionally tick \"Record fish length & type\" if catches will be logged with those details.\nThe first time you click \"Manage Participants\", these event details lock - this protects against accidental edits during the competition. The length/type setting also locks at that moment.\nOld events from earlier versions of the app reopen automatically (their data is upgraded to the v3.0 schema on load)."
     },
     {
       "title": "3. Roster & rounds",
