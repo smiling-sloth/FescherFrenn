@@ -121,7 +121,7 @@ Output naming:
 - Invoice form date picker now opens correctly (removed a modal grab that
   was hiding tkcalendar's calendar popup).
 - Invoice header now shows the full invoice number on its own line
-  underneath the "Numéro de facture" label.
+  underneath the "Numéro de facture" label (split into two lines for layout integrity).
 - Issuer legal name in the invoice footer splits onto two lines on
   recognised legal-form suffixes (a.s.b.l., S.A., S.à r.l., GmbH, …).
   Layout reserves the second row even for short names, keeping both
