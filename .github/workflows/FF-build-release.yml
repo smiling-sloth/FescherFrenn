@@ -34,7 +34,7 @@ jobs:
           # This keeps the workflow working for v1.2 (no translations.json)
           # and v2.x alike.
           ARGS=""
-          for f in logo.png logo.ico translations.json manual_translations.json config.json; do
+          for f in logo.png logo.ico translations.json manual_translations.json config.json help.json; do
             [ -f "$f" ] && ARGS="$ARGS --add-data $f;."
           done
           ICON_ARG=""
@@ -72,7 +72,7 @@ jobs:
       - name: Build .app
         run: |
           ARGS=""
-          for f in logo.png translations.json manual_translations.json config.json; do
+          for f in logo.png translations.json manual_translations.json config.json help.json; do
             [ -f "$f" ] && ARGS="$ARGS --add-data $f:."
           done
           pyinstaller --windowed --name Fescherfrenn \
