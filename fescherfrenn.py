@@ -395,7 +395,7 @@ class FishingApp:
         self.canvas.itemconfig(self.canvas_frame, width=self.canvas.winfo_width())
 
     def set_language(self, lang):
-        self.lang = lang
+        self.lang = lang   # language selector
         self.data["lang"] = lang
         self.root.title(LANGUAGES[self.lang]["title"])
         self.lang_frame.grid_forget()
