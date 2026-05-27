@@ -10,7 +10,7 @@ operated by non-technical users during a live event.
 
 - **Languages:** English, French, German, Luxembourgish (invoices are French)
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 3.1
+- **Version:** 3.2
 - **License:** MIT
 
 ---
@@ -25,8 +25,8 @@ operated by non-technical users during a live event.
 - Optional length & type tracking (event-level toggle, locks once the event
   is locked). When enabled, num-catches is locked to 1 per row.
 - Manage Participants window with full roster on the left and the round's
-  assigned participants on the right; **the Club field is a drop-down of
-  every club already entered**, so adding the second member of a club picks
+  assigned participants on the right; the Club field is a drop-down of
+  every club already entered, so adding the second member of a club picks
   the exact same spelling as the first (typing a new club name is still
   allowed)
 - Edit Catches window for in-event corrections
@@ -35,12 +35,16 @@ operated by non-technical users during a live event.
   Final). Portrait when length/type tracking is off, landscape when on.
 - **Invoicing module** (per event):
   - Invoice Manager (New / Edit / Reprint / Delete)
-  - Choose Club (distinct clubs of assigned participants, **grouped
-    case-insensitively** so "FF Stengefort" and "ff stengefort" are
+  - Choose Club (distinct clubs of assigned participants, grouped
+    case-insensitively so "FF Stengefort" and "ff stengefort" are
     invoiced as one) or Individual (true individuals first, separator,
     then every other assigned participant)
   - Quantity suggested automatically (sum of round assignments across all
-    case-variants of the same club) and editable
+    case-variants of the same club); **reduced for clubs whose members
+    have already been invoiced individually**, with a warning on the form
+  - Cross-warnings on the form: if an individual's club has already been
+    invoiced, or if an individual has already been invoiced individually,
+    a notice is shown so the operator can decide whether to proceed
   - Invoice number auto-assigned `PREFIX-NN-YYYY`, read-only on the form;
     the invoice header shows the full number on its own line under the
     "Numéro de facture" label
@@ -59,8 +63,8 @@ operated by non-technical users during a live event.
 Requires **Python 3.9+** and these companion files in the same folder:
 
 - `translations.json`, `manual_translations.json`, `config.json`, `help.json`
-- `logo.png` (optional `logo.ico` on Windows, optional `watermark.png` on
-  invoices)
+- `logo.png` (optional `logo.ico` on Windows, optional `logo.icns` on macOS,
+  optional `watermark.png` for invoices)
 
 ```bash
 pip install tkcalendar reportlab
@@ -75,10 +79,13 @@ Linux you may need `sudo apt install python3-tk`.
 ## Building the executables
 
 Builds are produced automatically by GitHub Actions
-(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.1`
+(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.2`
 builds the Windows `.exe` and macOS `.app` and drafts a release with both
-attached. The workflow already bundles `config.json` and `help.json`. To
-build manually with PyInstaller:
+attached. The workflow bundles `config.json` and `help.json` already; if you
+keep `watermark.png` and `logo.icns` in the repo, add them to the workflow's
+`--add-data` loop too.
+
+To build manually with PyInstaller:
 
 ```bash
 pip install pyinstaller
@@ -89,11 +96,25 @@ pyinstaller --onedir --windowed --name Fescherfrenn ^
   --add-data "manual_translations.json;." ^
   --add-data "config.json;." ^
   --add-data "help.json;." ^
-  --hidden-import babel.numbers ^
+  --add-data "watermark.png;." ^
   fescherfrenn.py
 ```
 
-(On macOS/Linux, `;` becomes `:` in `--add-data` and drop `--icon`.)
+On macOS/Linux, replace each `;` with `:` in `--add-data`, drop the
+`--icon logo.ico` flag, and add `--add-data "logo.icns:."` if you have a
+macOS icon file:
+
+```bash
+pyinstaller --onedir --windowed --name Fescherfrenn \
+  --add-data "logo.png:." \
+  --add-data "translations.json:." \
+  --add-data "manual_translations.json:." \
+  --add-data "config.json:." \
+  --add-data "help.json:." \
+  --add-data "watermark.png:." \
+  --add-data "logo.icns:." \
+  fescherfrenn.py
+```
 
 ---
 
@@ -116,31 +137,38 @@ Output naming:
 
 ## Changelog
 
+### v3.2
+- When invoicing a club, the suggested quantity is automatically reduced
+  by the rounds of any members who have already been invoiced
+  individually. The quantity stays editable; a remark below the form
+  shows how many members and how many rounds were excluded.
+- When invoicing an individual whose club has already been invoiced, a
+  remark warns the operator before saving.
+- When picking an individual who was already invoiced individually, a
+  remark warns about that too.
+- Edit mode is honoured throughout: the invoice currently being edited
+  does not count itself as "already issued" when computing adjustments.
+- Build instructions updated to bundle `watermark.png` and the optional
+  macOS `logo.icns`.
+
 ### v3.1
-- Club name is now picked from a drop-down of every club already entered in
-  the roster, in both the Add and Edit Participant forms. Typing a brand
-  new club name is still allowed for the first member of a new club.
+- Club name is now picked from a drop-down of every club already entered
+  in the roster, in both the Add and Edit Participant forms. Typing a
+  brand new club name is still allowed for the first member of a new club.
 - Invoice "Club" picker and the suggested quantity for a club invoice are
   now case-insensitive: variants like "FF Stengefort" and "ff stengefort"
   are treated as the same club. The display picks the most-used spelling
   (alphabetical tiebreak).
 - Invoice form date picker now opens correctly (modal grab on the manager
-  is released while the form is open, restored on close — kept the form
-  free of its own grab so the calendar popup remains visible).
+  is released while the form is open, restored on close).
 - Invoice header shows the full invoice number on its own line under the
   "Numéro de facture" label.
 - Issuer legal name in the invoice footer splits onto two lines on
-  recognised legal-form suffixes (a.s.b.l., S.A., S.à r.l., GmbH, …).
-  Layout reserves the second row even for short names, keeping both
-  footer columns symmetric.
-- Footer banner reduced from 200pt to 160pt now that the layout is
-  symmetric and predictable.
-- Lighter blues used for invoice header and footer to reduce toner usage
-  while keeping white text legible.
-- In-app Help redesigned with a left-side section navigator and a
-  scrollable reader pane on the right. Sections now live in `help.json`.
-- Help content fully translated into French, German, and Luxembourgish
-  (10 sections each).
+  recognised legal-form suffixes.
+- Footer banner shortened; lighter blues used for invoice header and
+  footer to reduce toner usage.
+- In-app Help redesigned with a left-side section navigator. Content
+  fully translated into French, German, and Luxembourgish.
 
 ### v3.0
 - Invoicing module: Manager + Form + French A4 PDF with optional watermark

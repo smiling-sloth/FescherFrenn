@@ -21,7 +21,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "3.1"
+APP_VERSION = "3.2"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -1713,6 +1713,30 @@ class FishingApp:
         os.makedirs(os.path.join(folder, "invoices"), exist_ok=True)
         return os.path.join(folder, "invoices", f"{inv.get('number', 'invoice')}.pdf")
 
+    # ---- v3.2 cross-invoice helpers ------------------------------
+    def _invoiced_individual_names(self, except_index=None):
+        """Names of participants already invoiced individually in this event.
+
+        ``except_index`` skips one invoice (used when editing - the invoice
+        under edit shouldn't see itself as 'already issued')."""
+        out = set()
+        for i, inv in enumerate(self.data.get("invoices", [])):
+            if except_index is not None and i == except_index:
+                continue
+            if inv.get("recipient_type") == "individual":
+                out.add(inv.get("recipient_name", ""))
+        return out
+
+    def _invoiced_clubs_cf(self, except_index=None):
+        """Case-folded names of clubs already invoiced as clubs."""
+        out = set()
+        for i, inv in enumerate(self.data.get("invoices", [])):
+            if except_index is not None and i == except_index:
+                continue
+            if inv.get("recipient_type") == "club":
+                out.add((inv.get("recipient_name") or "").strip().casefold())
+        return out
+
     def open_invoice_form(self, edit_index=None, on_done=None):
         if not self.check_event_details():
             return
@@ -1727,7 +1751,7 @@ class FishingApp:
         # opens as a separate Toplevel and is hidden behind a modal grab on
         # this dialog. transient() is enough to keep the form on top of the
         # main window without breaking the date picker.
-        dlg.geometry("540x540")
+        dlg.geometry("540x620")
 
         frame = ttk.Frame(dlg, padding=14)
         frame.pack(fill="both", expand=True)
@@ -1823,6 +1847,13 @@ class FishingApp:
             qty_entry.insert(0, str(existing.get("quantity", 1)))
         row += 1
 
+        # Warning area: empty by default, filled by on_recipient_picked.
+        warn_label = tk.Label(frame, text="", justify="left", anchor="w",
+                              wraplength=480, foreground="#A04500",
+                              font=("Arial", self.font_size - 2, "italic"))
+        warn_label.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(6, 4))
+        row += 1
+
         def rebuild_recipient():
             rt = type_var.get()
             if rt == "club":
@@ -1839,20 +1870,56 @@ class FishingApp:
             chosen = recipient_var.get()
             if self._is_separator_label(chosen):
                 recipient_var.set("")
+                warn_label.config(text="")
                 return
             if not chosen:
+                warn_label.config(text="")
                 return
+            # Edit mode: ignore the invoice currently being edited so it does
+            # not count itself as already issued.
+            except_idx = edit_index if editing else None
+            invoiced_individuals = self._invoiced_individual_names(except_idx)
+            invoiced_clubs_cf = self._invoiced_clubs_cf(except_idx)
+            warnings = []
+
             if type_var.get() == "club":
                 q = self.invoice_quantity_for_club(chosen)
+                # Reduce by rounds of members already invoiced individually.
+                club_cf = chosen.strip().casefold()
+                deducted = 0
+                already_n = 0
+                for n, info in self.data["participants"].items():
+                    if (info.get("club") or "").strip().casefold() != club_cf:
+                        continue
+                    if n in invoiced_individuals:
+                        rounds = self.invoice_quantity_for_individual(n)
+                        deducted += rounds
+                        already_n += 1
+                if already_n:
+                    q = max(q - deducted, 0)
+                    warnings.append(L["inv_warn_members_already_invoiced"]
+                                    .format(n=already_n, m=deducted))
             else:
                 q = self.invoice_quantity_for_individual(chosen)
+                # Warn if this individual was already invoiced individually.
+                if chosen in invoiced_individuals:
+                    warnings.append(L["inv_warn_already_individual"])
+                # Warn if this participant's club has already been invoiced.
+                info = self.data["participants"].get(chosen, {})
+                club = (info.get("club") or "").strip()
+                if club and club.casefold() in invoiced_clubs_cf:
+                    warnings.append(
+                        L["inv_warn_club_already_invoiced"].format(club=club))
+
             qty_entry.delete(0, tk.END)
             qty_entry.insert(0, str(q))
+            warn_label.config(text="\n".join(warnings))
 
         recipient_combo.bind("<<ComboboxSelected>>", on_recipient_picked)
         rebuild_recipient()
         if editing:
             recipient_var.set(existing.get("recipient_name", ""))
+            on_recipient_picked()  # populate warnings on the edited invoice
 
         def do_save():
             # Validate the chunk.
