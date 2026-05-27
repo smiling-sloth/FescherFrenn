@@ -10,7 +10,7 @@ operated by non-technical users during a live event.
 
 - **Languages:** English, French, German, Luxembourgish (invoices are French)
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 3.0.1
+- **Version:** 3.1
 - **License:** MIT
 
 ---
@@ -25,18 +25,25 @@ operated by non-technical users during a live event.
 - Optional length & type tracking (event-level toggle, locks once the event
   is locked). When enabled, num-catches is locked to 1 per row.
 - Manage Participants window with full roster on the left and the round's
-  assigned participants on the right
+  assigned participants on the right; **the Club field is a drop-down of
+  every club already entered**, so adding the second member of a club picks
+  the exact same spelling as the first (typing a new club name is still
+  allowed)
 - Edit Catches window for in-event corrections
 - **Round-scoped PDF reports** with a settings panel (Event Summary always
   on; Individual reports and Combined Ranking optional; Combined only on
   Final). Portrait when length/type tracking is off, landscape when on.
 - **Invoicing module** (per event):
   - Invoice Manager (New / Edit / Reprint / Delete)
-  - Choose Club (distinct clubs of assigned participants) or Individual
-    (true individuals first, separator, then every other assigned
-    participant)
-  - Quantity suggested automatically (sum of round assignments) and editable
-  - Invoice number auto-assigned `PREFIX-NN-YYYY`, read-only on the form
+  - Choose Club (distinct clubs of assigned participants, **grouped
+    case-insensitively** so "FF Stengefort" and "ff stengefort" are
+    invoiced as one) or Individual (true individuals first, separator,
+    then every other assigned participant)
+  - Quantity suggested automatically (sum of round assignments across all
+    case-variants of the same club) and editable
+  - Invoice number auto-assigned `PREFIX-NN-YYYY`, read-only on the form;
+    the invoice header shows the full number on its own line under the
+    "Numéro de facture" label
   - French A4 PDF matching the club's invoice template; supports an
     optional `watermark.png` (~480×480, 12% opacity, centred — skipped
     silently if absent)
@@ -68,18 +75,10 @@ Linux you may need `sudo apt install python3-tk`.
 ## Building the executables
 
 Builds are produced automatically by GitHub Actions
-(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.0.1`
+(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.1`
 builds the Windows `.exe` and macOS `.app` and drafts a release with both
-attached. The workflow already bundles `config.json` (added in v3.0). For
-v3.0.1, also add `help.json` to the same loop:
-
-```yaml
-for f in logo.png logo.ico translations.json manual_translations.json config.json help.json; do
-  [ -f "$f" ] && ARGS="$ARGS --add-data $f;."
-done
-```
-
-To build manually with PyInstaller:
+attached. The workflow already bundles `config.json` and `help.json`. To
+build manually with PyInstaller:
 
 ```bash
 pip install pyinstaller
@@ -117,11 +116,19 @@ Output naming:
 
 ## Changelog
 
-### v3.0.1
-- Invoice form date picker now opens correctly (removed a modal grab that
-  was hiding tkcalendar's calendar popup).
-- Invoice header now shows the full invoice number on its own line
-  underneath the "Numéro de facture" label (split into two lines for layout integrity).
+### v3.1
+- Club name is now picked from a drop-down of every club already entered in
+  the roster, in both the Add and Edit Participant forms. Typing a brand
+  new club name is still allowed for the first member of a new club.
+- Invoice "Club" picker and the suggested quantity for a club invoice are
+  now case-insensitive: variants like "FF Stengefort" and "ff stengefort"
+  are treated as the same club. The display picks the most-used spelling
+  (alphabetical tiebreak).
+- Invoice form date picker now opens correctly (modal grab on the manager
+  is released while the form is open, restored on close — kept the form
+  free of its own grab so the calendar popup remains visible).
+- Invoice header shows the full invoice number on its own line under the
+  "Numéro de facture" label.
 - Issuer legal name in the invoice footer splits onto two lines on
   recognised legal-form suffixes (a.s.b.l., S.A., S.à r.l., GmbH, …).
   Layout reserves the second row even for short names, keeping both

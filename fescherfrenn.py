@@ -21,7 +21,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "3.0.1"
+APP_VERSION = "3.1"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -1045,6 +1045,7 @@ class FishingApp:
         win = Toplevel(self.root)
         win.title(L["manage_participants"])
         win.transient(self.root)
+        win.update_idletasks()  # macOS: ensure window is mapped before grabbing
         win.grab_set()
         win.geometry("980x560")
 
@@ -1210,8 +1211,11 @@ class FishingApp:
         name_entry.focus_set()
 
         ttk.Label(frame, text=L["club"], font=("Arial", self.font_size)).grid(row=1, column=0, sticky="w", pady=4)
-        club_entry = ttk.Entry(frame, font=("Arial", self.font_size), width=22, validate="key",
-                               validatecommand=(self.root.register(self.validate_length), "%P"))
+        # Combobox (not readonly): suggestions come from the existing roster
+        # so existing club names get reused; typing a new one is still allowed.
+        club_entry = ttk.Combobox(frame, font=("Arial", self.font_size), width=20,
+                                  values=self.known_clubs(), validate="key",
+                                  validatecommand=(self.root.register(self.validate_length), "%P"))
         club_entry.grid(row=1, column=1, pady=4, sticky="ew")
 
         ttk.Label(frame, text=L["category"], font=("Arial", self.font_size)).grid(row=2, column=0, sticky="w", pady=4)
@@ -1278,6 +1282,7 @@ class FishingApp:
         win = Toplevel(self.root)
         win.title(f'{L["edit_catches"]} - {key_to_display(self.lang, self.current_manche)}')
         win.transient(self.root)
+        win.update_idletasks()  # macOS: ensure window is mapped before grabbing
         win.grab_set()
         win.geometry("820x480")
 
@@ -1454,19 +1459,50 @@ class FishingApp:
         except (ValueError, KeyError):
             return datetime.now().year
 
+    @staticmethod
+    def _canonical_clubs(club_names):
+        """Group club names case-insensitively and pick a canonical display form.
+
+        For each case-folded key, the canonical form is the most-used variant;
+        ties are broken alphabetically (so 'FF Stengefort' wins over 'ff
+        stengefort' when both occur the same number of times).
+        Returns a list of canonical club names sorted case-insensitively.
+        """
+        from collections import Counter
+        groups = {}  # key = casefold(name), value = Counter of original spellings
+        for raw in club_names:
+            name = (raw or "").strip()
+            if not name:
+                continue
+            key = name.casefold()
+            groups.setdefault(key, Counter())[name] += 1
+        canonical = []
+        for key, counter in groups.items():
+            # Sort by (-count, name) so highest count wins; alphabetical tiebreak.
+            best = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+            canonical.append(best)
+        return sorted(canonical, key=str.casefold)
+
     def invoice_clubs(self):
         """Distinct non-empty club names actually used by at least one participant
-        who is assigned to any round of this event."""
+        assigned to any round of this event, grouped case-insensitively."""
         assigned = set()
         for sk in SESSION_KEYS:
             assigned.update(self.data["sessions"][sk]["participants"])
-        clubs = set()
+        names = []
         for n in assigned:
             info = self.data["participants"].get(n, {})
-            club = (info.get("club") or "").strip()
-            if club:
-                clubs.add(club)
-        return sorted(clubs, key=str.lower)
+            names.append(info.get("club") or "")
+        return self._canonical_clubs(names)
+
+    def known_clubs(self):
+        """Roster-wide list of distinct club names, case-insensitively grouped.
+
+        Used by the participant form so a club already entered for one person
+        is suggested when adding/editing another - prevents accidental
+        spelling/case drift that would split a club's invoice into two."""
+        return self._canonical_clubs(
+            (info.get("club") or "") for info in self.data["participants"].values())
 
     def invoice_individuals_dropdown(self):
         """List shown when 'Individual' is selected.
@@ -1503,12 +1539,12 @@ class FishingApp:
 
         Counts assignments to rounds (Manche 1/2/3/Final) regardless of catches.
         """
-        target = (club_name or "").strip().lower()
+        target = (club_name or "").strip().casefold()
         qty = 0
         for sk in SESSION_KEYS:
             for n in self.data["sessions"][sk]["participants"]:
                 info = self.data["participants"].get(n, {})
-                if (info.get("club") or "").strip().lower() == target:
+                if (info.get("club") or "").strip().casefold() == target:
                     qty += 1
         return qty
 
@@ -1532,6 +1568,7 @@ class FishingApp:
         win = Toplevel(self.root)
         win.title(L["manage_invoices"])
         win.transient(self.root)
+        win.update_idletasks()  # macOS: ensure window is mapped before grabbing
         win.grab_set()
         win.geometry("840x440")
 
@@ -1577,13 +1614,27 @@ class FishingApp:
                 return None
 
         def do_new():
-            self.open_invoice_form(on_done=refresh)
+            # On macOS, two stacked grabs (manager + form) breaks click routing
+            # if the form has no grab of its own. Release the manager's grab
+            # while the form is open, then reclaim it on return so the manager
+            # stays modal once the form closes.
+            win.grab_release()
+            try:
+                self.open_invoice_form(on_done=refresh)
+            finally:
+                if win.winfo_exists():
+                    win.grab_set()
 
         def do_edit():
             idx = selected_index()
             if idx is None:
                 return
-            self.open_invoice_form(edit_index=idx, on_done=refresh)
+            win.grab_release()
+            try:
+                self.open_invoice_form(edit_index=idx, on_done=refresh)
+            finally:
+                if win.winfo_exists():
+                    win.grab_set()
 
         def do_reprint():
             idx = selected_index()
@@ -2127,6 +2178,7 @@ class FishingApp:
         dlg = Toplevel(self.root)
         dlg.title(L["settings_title"])
         dlg.transient(self.root)
+        dlg.update_idletasks()  # macOS: ensure window is mapped before grabbing
         dlg.grab_set()
         dlg.geometry("640x680")
 
@@ -2519,6 +2571,7 @@ class FishingApp:
         dialog = Toplevel(self.root)
         dialog.title(title)
         dialog.transient(self.root)
+        dialog.update_idletasks()  # macOS: ensure window is mapped before grabbing
         dialog.grab_set()
         text_length = len(message)
         width = max(300, min(600, text_length * 8))
