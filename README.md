@@ -10,7 +10,7 @@ operated by non-technical users during a live event.
 
 - **Languages:** English, French, German, Luxembourgish (invoices are French)
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 3.2
+- **Version:** 3.3
 - **License:** MIT
 
 ---
@@ -38,13 +38,15 @@ operated by non-technical users during a live event.
   - Choose Club (distinct clubs of assigned participants, grouped
     case-insensitively so "FF Stengefort" and "ff stengefort" are
     invoiced as one) or Individual (true individuals first, separator,
-    then every other assigned participant)
+    then every other assigned participant). Recipients who have already
+    been invoiced are demoted to a final "Already Invoiced" section -
+    still pickable for corrective invoices, but visually separated so the
+    operator doesn't double-bill by accident.
   - Quantity suggested automatically (sum of round assignments across all
-    case-variants of the same club); **reduced for clubs whose members
-    have already been invoiced individually**, with a warning on the form
-  - Cross-warnings on the form: if an individual's club has already been
-    invoiced, or if an individual has already been invoiced individually,
-    a notice is shown so the operator can decide whether to proceed
+    case-variants of the same club); reduced for clubs whose members
+    have already been invoiced individually, with a warning on the form.
+    Picking a club or individual that has already been invoiced also
+    raises a warning.
   - Invoice number auto-assigned `PREFIX-NN-YYYY`, read-only on the form;
     the invoice header shows the full number on its own line under the
     "Numéro de facture" label
@@ -79,7 +81,7 @@ Linux you may need `sudo apt install python3-tk`.
 ## Building the executables
 
 Builds are produced automatically by GitHub Actions
-(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.2`
+(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.3`
 builds the Windows `.exe` and macOS `.app` and drafts a release with both
 attached. The workflow bundles `config.json` and `help.json` already; if you
 keep `watermark.png` and `logo.icns` in the repo, add them to the workflow's
@@ -137,6 +139,17 @@ Output naming:
 
 ## Changelog
 
+### v3.3
+- Invoice picker now partitions already-invoiced recipients into their own
+  "Already Invoiced" section at the bottom of the drop-down list, under a
+  non-selectable separator. Still pickable (for corrective invoices), but
+  visually demoted so the operator does not double-bill by accident.
+  Applied to both the Club picker and the Individual picker.
+- Picking a club that has already been invoiced raises a warning below the
+  form, symmetric with the existing warnings for individuals.
+- Edit mode: the invoice currently being edited does not see itself in the
+  "Already Invoiced" partition or in any of the cross-warnings.
+
 ### v3.2
 - When invoicing a club, the suggested quantity is automatically reduced
   by the rounds of any members who have already been invoiced
@@ -146,8 +159,6 @@ Output naming:
   remark warns the operator before saving.
 - When picking an individual who was already invoiced individually, a
   remark warns about that too.
-- Edit mode is honoured throughout: the invoice currently being edited
-  does not count itself as "already issued" when computing adjustments.
 - Build instructions updated to bundle `watermark.png` and the optional
   macOS `logo.icns`.
 

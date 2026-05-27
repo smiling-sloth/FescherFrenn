@@ -21,7 +21,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "3.2"
+APP_VERSION = "3.3"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -1483,9 +1483,16 @@ class FishingApp:
             canonical.append(best)
         return sorted(canonical, key=str.casefold)
 
-    def invoice_clubs(self):
-        """Distinct non-empty club names actually used by at least one participant
-        assigned to any round of this event, grouped case-insensitively."""
+    def invoice_clubs(self, except_invoice_index=None):
+        """Distinct non-empty club names of participants assigned to any round,
+        grouped case-insensitively.
+
+        v3.3: clubs that have already been invoiced (as clubs) are still listed,
+        but moved to a final "Already Invoiced" section under a non-selectable
+        separator. ``except_invoice_index`` lets the form exclude the invoice
+        currently being edited from the already-invoiced set.
+        """
+        L = LANGUAGES[self.lang]
         assigned = set()
         for sk in SESSION_KEYS:
             assigned.update(self.data["sessions"][sk]["participants"])
@@ -1493,7 +1500,18 @@ class FishingApp:
         for n in assigned:
             info = self.data["participants"].get(n, {})
             names.append(info.get("club") or "")
-        return self._canonical_clubs(names)
+        all_clubs = self._canonical_clubs(names)
+        invoiced_cf = self._invoiced_clubs_cf(except_invoice_index)
+        fresh, used = [], []
+        for c in all_clubs:
+            (used if c.strip().casefold() in invoiced_cf else fresh).append(c)
+        out = list(fresh)
+        if used:
+            if out:
+                out.append(L["inv_separator"])
+            out.append(L["inv_already_invoiced_group"])
+            out.extend(used)
+        return out
 
     def known_clubs(self):
         """Roster-wide list of distinct club names, case-insensitively grouped.
@@ -1504,25 +1522,35 @@ class FishingApp:
         return self._canonical_clubs(
             (info.get("club") or "") for info in self.data["participants"].values())
 
-    def invoice_individuals_dropdown(self):
+    def invoice_individuals_dropdown(self, except_invoice_index=None):
         """List shown when 'Individual' is selected.
 
         Group 1: assigned participants whose club is blank/null, alphabetical.
-        Separator (non-selectable).
         Group 2: all *other* assigned participants, alphabetical.
+        Group 3 (v3.3): anyone who has already been invoiced *as an individual*
+            in this event (drawn from groups 1+2). They are still pickable -
+            corrective invoices are sometimes legitimate - but visually demoted.
+
+        Each group is preceded by a non-selectable header and separated from
+        the previous by a non-selectable separator string.
         """
         L = LANGUAGES[self.lang]
         assigned = set()
         for sk in SESSION_KEYS:
             assigned.update(self.data["sessions"][sk]["participants"])
-        true_indiv = []
-        others = []
+        invoiced = self._invoiced_individual_names(except_invoice_index)
+
+        true_indiv, others, already = [], [], []
         for n in sorted(assigned, key=str.lower):
+            if n in invoiced:
+                already.append(n)
+                continue
             info = self.data["participants"].get(n, {})
             if (info.get("club") or "").strip() == "":
                 true_indiv.append(n)
             else:
                 others.append(n)
+
         items = []
         if true_indiv:
             items.append(L["inv_individuals_group"])
@@ -1532,6 +1560,11 @@ class FishingApp:
                 items.append(L["inv_separator"])
             items.append(L["inv_others_group"])
             items.extend(others)
+        if already:
+            if items:
+                items.append(L["inv_separator"])
+            items.append(L["inv_already_invoiced_group"])
+            items.extend(already)
         return items
 
     def invoice_quantity_for_club(self, club_name):
@@ -1557,7 +1590,8 @@ class FishingApp:
 
     def _is_separator_label(self, s):
         L = LANGUAGES[self.lang]
-        return s in (L["inv_individuals_group"], L["inv_others_group"], L["inv_separator"])
+        return s in (L["inv_individuals_group"], L["inv_others_group"],
+                     L["inv_separator"], L["inv_already_invoiced_group"])
 
     def open_invoices_manager(self):
         if not self.check_event_details():
@@ -1856,12 +1890,13 @@ class FishingApp:
 
         def rebuild_recipient():
             rt = type_var.get()
+            except_idx = edit_index if editing else None
             if rt == "club":
                 rec_label.config(text=L["inv_select_club"])
-                recipient_combo["values"] = self.invoice_clubs()
+                recipient_combo["values"] = self.invoice_clubs(except_idx)
             else:
                 rec_label.config(text=L["inv_select_individual"])
-                recipient_combo["values"] = self.invoice_individuals_dropdown()
+                recipient_combo["values"] = self.invoice_individuals_dropdown(except_idx)
             if not editing:
                 recipient_var.set("")
                 qty_entry.delete(0, tk.END)
@@ -1884,8 +1919,11 @@ class FishingApp:
 
             if type_var.get() == "club":
                 q = self.invoice_quantity_for_club(chosen)
-                # Reduce by rounds of members already invoiced individually.
                 club_cf = chosen.strip().casefold()
+                # v3.3: warn if the club itself has already been invoiced.
+                if club_cf in invoiced_clubs_cf:
+                    warnings.append(L["inv_warn_this_club_already_invoiced"])
+                # Reduce by rounds of members already invoiced individually.
                 deducted = 0
                 already_n = 0
                 for n, info in self.data["participants"].items():

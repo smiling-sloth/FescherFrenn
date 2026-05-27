@@ -183,7 +183,9 @@
     "settings_field_payment_terms": "Payment terms (days)",
     "inv_warn_already_individual": "Warning: this participant has already been invoiced individually.",
     "inv_warn_club_already_invoiced": "Warning: their club \"{club}\" has already been invoiced.",
-    "inv_warn_members_already_invoiced": "* {n} member(s) of this club have already been invoiced individually. Proposed quantity reduced by {m}."
+    "inv_warn_members_already_invoiced": "* {n} member(s) of this club have already been invoiced individually. Proposed quantity reduced by {m}.",
+    "inv_already_invoiced_group": "-- Already Invoiced --",
+    "inv_warn_this_club_already_invoiced": "Warning: this club has already been invoiced."
   },
   "French": {
     "title": "Registre de Concours de Pêche Fëscherfrënn Stengefort",
@@ -369,7 +371,9 @@
     "settings_field_payment_terms": "Délai de paiement (jours)",
     "inv_warn_already_individual": "Attention : ce participant a déjà été facturé individuellement.",
     "inv_warn_club_already_invoiced": "Attention : son club « {club} » a déjà été facturé.",
-    "inv_warn_members_already_invoiced": "* {n} membre(s) de ce club ont déjà été facturés individuellement. Quantité proposée réduite de {m}."
+    "inv_warn_members_already_invoiced": "* {n} membre(s) de ce club ont déjà été facturés individuellement. Quantité proposée réduite de {m}.",
+    "inv_already_invoiced_group": "-- Déjà facturés --",
+    "inv_warn_this_club_already_invoiced": "Attention : ce club a déjà été facturé."
   },
   "German": {
     "title": "Fëscherfrënn Stengefort Angelwettbewerb Register",
@@ -555,7 +559,9 @@
     "settings_field_payment_terms": "Zahlungsziel (Tage)",
     "inv_warn_already_individual": "Warnung: dieser Teilnehmer wurde bereits einzeln in Rechnung gestellt.",
     "inv_warn_club_already_invoiced": "Warnung: sein Verein „{club}“ wurde bereits in Rechnung gestellt.",
-    "inv_warn_members_already_invoiced": "* {n} Mitglied(er) dieses Vereins wurden bereits einzeln in Rechnung gestellt. Vorgeschlagene Menge um {m} reduziert."
+    "inv_warn_members_already_invoiced": "* {n} Mitglied(er) dieses Vereins wurden bereits einzeln in Rechnung gestellt. Vorgeschlagene Menge um {m} reduziert.",
+    "inv_already_invoiced_group": "-- Bereits in Rechnung gestellt --",
+    "inv_warn_this_club_already_invoiced": "Warnung: dieser Verein wurde bereits in Rechnung gestellt."
   },
   "Luxembourgish": {
     "title": "Fëscherfrënn Stengefort Fëschkonkurrenz Register",
@@ -741,6 +747,8 @@
     "settings_field_payment_terms": "Bezuelfrist (Deeg)",
     "inv_warn_already_individual": "Warnung: deen Participant gouf scho separat faktureéiert.",
     "inv_warn_club_already_invoiced": "Warnung: säi Verein „{club}“ gouf scho faktureéiert.",
-    "inv_warn_members_already_invoiced": "* {n} Mëtglieder vun dësem Veräin goufe schonn eenzel faktureéiert. Virgeschloee Quantitéit ëm {m} reduzéiert."
+    "inv_warn_members_already_invoiced": "* {n} Mëtglieder vun dësem Veräin goufe schonn eenzel faktureéiert. Virgeschloee Quantitéit ëm {m} reduzéiert.",
+    "inv_already_invoiced_group": "-- Schonn faktureéiert --",
+    "inv_warn_this_club_already_invoiced": "Warnung: dee Veräin gouf scho faktureéiert."
   }
 }
