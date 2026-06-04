@@ -185,7 +185,9 @@
     "inv_warn_club_already_invoiced": "Warning: their club \"{club}\" has already been invoiced.",
     "inv_warn_members_already_invoiced": "* {n} member(s) of this club have already been invoiced individually. Proposed quantity reduced by {m}.",
     "inv_already_invoiced_group": "-- Already Invoiced --",
-    "inv_warn_this_club_already_invoiced": "Warning: this club has already been invoiced."
+    "inv_warn_this_club_already_invoiced": "Warning: this club has already been invoiced.",
+    "catch_recorded_group": "-- Already recorded --",
+    "inv_qty_indiv_high": "Note: more than 4 sessions for an individual. Unusual, but allowed (e.g. a caretaker paying for a minor). The invoice will be created."
   },
   "French": {
     "title": "Registre de Concours de Pêche Fëscherfrënn Stengefort",
@@ -373,7 +375,9 @@
     "inv_warn_club_already_invoiced": "Attention : son club « {club} » a déjà été facturé.",
     "inv_warn_members_already_invoiced": "* {n} membre(s) de ce club ont déjà été facturés individuellement. Quantité proposée réduite de {m}.",
     "inv_already_invoiced_group": "-- Déjà facturés --",
-    "inv_warn_this_club_already_invoiced": "Attention : ce club a déjà été facturé."
+    "inv_warn_this_club_already_invoiced": "Attention : ce club a déjà été facturé.",
+    "catch_recorded_group": "-- Déjà enregistrés --",
+    "inv_qty_indiv_high": "Note : plus de 4 manches pour un individuel. Inhabituel, mais autorisé (p. ex. un tuteur payant pour un mineur). La facture sera créée."
   },
   "German": {
     "title": "Fëscherfrënn Stengefort Angelwettbewerb Register",
@@ -561,7 +565,9 @@
     "inv_warn_club_already_invoiced": "Warnung: sein Verein „{club}“ wurde bereits in Rechnung gestellt.",
     "inv_warn_members_already_invoiced": "* {n} Mitglied(er) dieses Vereins wurden bereits einzeln in Rechnung gestellt. Vorgeschlagene Menge um {m} reduziert.",
     "inv_already_invoiced_group": "-- Bereits in Rechnung gestellt --",
-    "inv_warn_this_club_already_invoiced": "Warnung: dieser Verein wurde bereits in Rechnung gestellt."
+    "inv_warn_this_club_already_invoiced": "Warnung: dieser Verein wurde bereits in Rechnung gestellt.",
+    "catch_recorded_group": "-- Bereits erfasst --",
+    "inv_qty_indiv_high": "Hinweis: mehr als 4 Runden für eine Einzelperson. Ungewöhnlich, aber erlaubt (z. B. ein Betreuer zahlt für einen Minderjährigen). Die Rechnung wird erstellt."
   },
   "Luxembourgish": {
     "title": "Fëscherfrënn Stengefort Fëschkonkurrenz Register",
@@ -749,6 +755,8 @@
     "inv_warn_club_already_invoiced": "Warnung: säi Verein „{club}“ gouf scho faktureéiert.",
     "inv_warn_members_already_invoiced": "* {n} Mëtglieder vun dësem Veräin goufe schonn eenzel faktureéiert. Virgeschloee Quantitéit ëm {m} reduzéiert.",
     "inv_already_invoiced_group": "-- Schonn faktureéiert --",
-    "inv_warn_this_club_already_invoiced": "Warnung: dee Veräin gouf scho faktureéiert."
+    "inv_warn_this_club_already_invoiced": "Warnung: dee Veräin gouf scho faktureéiert.",
+    "catch_recorded_group": "-- Scho festgehal --",
+    "inv_qty_indiv_high": "Notiz: méi wéi 4 Manchen fir eng Eenzelpersoun. Ongewéinlech, awer erlaabt (z. B. e Betreier bezuelt fir e Mannerjäregen). D'Rechnung gëtt erstallt."
   }
 }

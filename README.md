@@ -10,7 +10,7 @@ operated by non-technical users during a live event.
 
 - **Languages:** English, French, German, Luxembourgish (invoices are French)
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 3.3
+- **Version:** 3.4
 - **License:** MIT
 
 ---
@@ -81,7 +81,7 @@ Linux you may need `sudo apt install python3-tk`.
 ## Building the executables
 
 Builds are produced automatically by GitHub Actions
-(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.3`
+(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.4`
 builds the Windows `.exe` and macOS `.app` and drafts a release with both
 attached. The workflow bundles `config.json` and `help.json` already; if you
 keep `watermark.png` and `logo.icns` in the repo, add them to the workflow's
@@ -138,6 +138,24 @@ Output naming:
 ---
 
 ## Changelog
+
+### v3.4
+- **Critical fix:** invoices created in a brand-new event (one started via
+  Reset or first launch, rather than imported) silently failed to save and
+  the invoice counter ran away (advancing on every failed attempt). Root
+  cause: fresh events were built without an `invoices` list. Every fresh
+  event now carries the complete schema, the invoice list is always present,
+  and the counter only advances after an invoice is successfully written -
+  so a failure never burns a number.
+- Unit price set on the first invoice of an event is now remembered and
+  suggested on every following invoice (editable each time), the same way
+  the quantity is suggested.
+- Catch-logging participant drop-down now partitions: participants with no
+  catch yet in the current round appear on top, then a separator, then those
+  who already have a catch recorded. Both groups alphabetical; all selectable.
+- Invoicing an individual for more than 4 sessions is now allowed (e.g. a
+  caretaker paying for a minor's rounds); it shows an informational note
+  instead of blocking. Quantities below 1 or non-integer are still rejected.
 
 ### v3.3
 - Invoice picker now partitions already-invoiced recipients into their own

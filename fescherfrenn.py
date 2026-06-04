@@ -21,7 +21,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "3.3"
+APP_VERSION = "3.4"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -152,11 +152,25 @@ def empty_sessions():
     return {k: {"participants": [], "catches": {}} for k in SESSION_KEYS}
 
 
+def new_event_data(lang="English"):
+    """A fresh, fully-formed event dict.
+
+    Single source of truth for a blank event so the invoice keys can never
+    go missing again (a missing "invoices" key caused silent save failures
+    and a runaway invoice counter in v3.3).
+    """
+    return {
+        "event": {}, "participants": {}, "sessions": empty_sessions(),
+        "invoices": [], "invoice_seq_start": None, "invoice_next": None,
+        "invoice_unit_price": None,
+        "track_details": False, "lang": lang, "version": APP_VERSION,
+    }
+
+
 def migrate_data(data):
     """Bring older v1.x and v2.0 (auto-assign) data up to the v2.1 schema in place."""
     if not isinstance(data, dict):
-        return {"event": {}, "participants": {}, "sessions": empty_sessions(),
-                "lang": "English", "version": APP_VERSION}
+        return new_event_data()
     data.setdefault("event", {})
     data.setdefault("participants", {})
     for name in list(data["participants"].keys()):
@@ -217,6 +231,7 @@ def migrate_data(data):
         data["invoices"] = []
     data.setdefault("invoice_seq_start", None)
     data.setdefault("invoice_next", None)
+    data.setdefault("invoice_unit_price", None)
     data.setdefault("lang", "English")
     data["version"] = APP_VERSION
     return data
@@ -249,8 +264,7 @@ def load_data(event=None):
                 return migrate_data(json.load(file))
     except Exception as e:
         logging.error(f"load_data failed: {str(e)}")
-    return {"event": {}, "participants": {}, "sessions": empty_sessions(),
-            "lang": "English", "version": APP_VERSION}
+    return new_event_data()
 
 def save_data(data, event=None):
     """Save data to event-specific folder with dynamic filename, fallback to user directory."""
@@ -493,7 +507,7 @@ class FishingApp:
         ttk.Label(catch_frame, text=L["name"], font=("Arial", self.font_size)).grid(row=0, column=0, pady=3, sticky="w")
         self.catch_name_var = tk.StringVar()
         self.catch_name = ttk.Combobox(catch_frame, textvariable=self.catch_name_var,
-                                       values=self.current_manche_participants(),
+                                       values=self.catch_dropdown_values(),
                                        font=("Arial", self.font_size), width=20)
         self.catch_name.grid(row=0, column=1, pady=3, sticky="ew")
         self.catch_name_var.set(L["select_participant"])
@@ -689,6 +703,9 @@ class FishingApp:
             self.catch_name.config(foreground='grey')
 
     def on_combobox_selected(self, event):
+        if self._is_catch_separator(self.catch_name_var.get()):
+            self.catch_name_var.set('')
+            return
         self.catch_name.config(foreground='black')
 
     def create_tooltip(self, widget, text):
@@ -832,7 +849,7 @@ class FishingApp:
             if not num_catches_str or int(num_catches_str) < 1:
                 messagebox.showerror("Error", L["invalid_catches"])
                 return
-            if name == L["select_participant"] or not name:
+            if name == L["select_participant"] or not name or self._is_catch_separator(name):
                 messagebox.showerror("Error", L["error"])
                 return
             if name not in self.data["participants"]:
@@ -996,6 +1013,27 @@ class FishingApp:
     def current_manche_participants(self):
         return sorted(self.data["sessions"][self.current_manche]["participants"], key=str.lower)
 
+    def catch_dropdown_values(self):
+        """Names for the catch combobox, partitioned into those without a catch
+        recorded in the current round (top) and those who already have at least
+        one (below a non-selectable separator). Both groups alphabetical; all
+        names remain selectable."""
+        L = LANGUAGES[self.lang]
+        sess = self.data["sessions"][self.current_manche]
+        parts = sorted(sess["participants"], key=str.lower)
+        no_catch, has_catch = [], []
+        for n in parts:
+            (has_catch if sess["catches"].get(n) else no_catch).append(n)
+        out = list(no_catch)
+        if has_catch:
+            if out:
+                out.append(L["catch_recorded_group"])
+            out.extend(has_catch)
+        return out
+
+    def _is_catch_separator(self, s):
+        return s == LANGUAGES[self.lang]["catch_recorded_group"]
+
     def on_manche_changed(self, event=None):
         self.current_manche = display_to_key(self.lang, self.manche_var.get())
         self.refresh_manche_view()
@@ -1014,7 +1052,7 @@ class FishingApp:
     def refresh_manche_view(self):
         L = LANGUAGES[self.lang]
         if self.catch_name is not None:
-            self.catch_name["values"] = self.current_manche_participants()
+            self.catch_name["values"] = self.catch_dropdown_values()
             self.catch_name_var.set(L["select_participant"])
             self.catch_name.config(foreground='grey')
         self.refresh_rankings()
@@ -1870,6 +1908,9 @@ class FishingApp:
         price_entry.grid(row=row, column=1, pady=4, sticky="w")
         if editing:
             price_entry.insert(0, self.num_to_str(existing.get("unit_price", 0)))
+        elif self.data.get("invoice_unit_price") is not None:
+            # First invoice's price is suggested for all following ones (editable).
+            price_entry.insert(0, self.num_to_str(self.data.get("invoice_unit_price")))
         row += 1
 
         # Quantity (suggested + editable).
@@ -1987,10 +2028,12 @@ class FishingApp:
                 messagebox.showerror("Error", L["inv_invalid_qty"])
                 return
             if rt == "individual" and qty > 4:
-                messagebox.showerror("Error", L["inv_qty_indiv_range"])
-                return
+                # Allowed (e.g. a caretaker paying for a minor); just inform.
+                messagebox.showwarning("", L["inv_qty_indiv_high"])
 
-            # Pick / preserve the sequence and full number.
+            # Determine the sequence number but DO NOT advance the counter yet -
+            # a later failure must not bump it (the v3.3 runaway-counter bug).
+            start_val = None
             if editing:
                 seq = existing["seq"]
                 full_number = existing["number"]
@@ -2003,10 +2046,12 @@ class FishingApp:
                     except ValueError:
                         messagebox.showerror("Error", L["inv_invalid_qty"])
                         return
-                    self.data["invoice_seq_start"] = start_val
-                    self.data["invoice_next"] = start_val
-                seq = self._next_invoice_number()
-                full_number = f'{CONFIG.get("invoice_prefix", "INV")}-{seq:02d}-{self.event_year()}'
+                    seq = start_val
+                else:
+                    seq = self.data.get("invoice_next")
+                    if seq is None:
+                        seq = self.data.get("invoice_seq_start") or 1
+                full_number = f'{CONFIG.get("invoice_prefix", "INV")}-{int(seq):02d}-{self.event_year()}'
 
             date_str = date_entry.get_date().strftime("%d/%m/%Y")
             amount = round(qty * price, 2)
@@ -2022,18 +2067,33 @@ class FishingApp:
                 "quantity": qty,
                 "amount": amount,
             }
-            if editing:
-                self.data["invoices"][edit_index] = invoice
-            else:
-                self.data["invoices"].append(invoice)
-            self.update_event()
+
+            # Guarantee the list exists even for events created before this fix.
+            self.data.setdefault("invoices", [])
+
+            # Generate the PDF FIRST. If it fails, nothing is committed: no list
+            # change, no counter advance, no half-saved state.
             try:
                 self.write_invoice_pdf(invoice)
-                messagebox.showinfo("", L["inv_saved"])
             except Exception as e:
                 logging.error(f"Invoice PDF failed: {e}")
                 messagebox.showerror("Error", f"PDF: {e}")
                 return
+
+            # PDF succeeded -> commit the record, and (new invoices only) the
+            # counter and the suggested unit price.
+            if editing:
+                self.data["invoices"][edit_index] = invoice
+            else:
+                self.data["invoices"].append(invoice)
+                if start_val is not None:
+                    self.data["invoice_seq_start"] = start_val
+                self.data["invoice_next"] = int(seq) + 1
+                if self.data.get("invoice_unit_price") is None:
+                    self.data["invoice_unit_price"] = price
+
+            self.update_event()
+            messagebox.showinfo("", L["inv_saved"])
             if on_done:
                 on_done()
             dlg.destroy()
@@ -2701,7 +2761,7 @@ class FishingApp:
 
     def reset_event(self):
         if self.custom_dialog(LANGUAGES[self.lang]["reset_event"], LANGUAGES[self.lang]["confirm_reset"], [(LANGUAGES[self.lang]["yes"], True), (LANGUAGES[self.lang]["no"], False)]):
-            self.data = {"event": {}, "participants": {}, "sessions": empty_sessions(), "lang": self.lang, "version": APP_VERSION}
+            self.data = new_event_data(self.lang)
             folder_name = get_event_folder(self.data["event"])
             data_file = os.path.join(folder_name, f"{folder_name}.json")
             if os.path.exists(data_file):
