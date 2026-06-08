@@ -10,7 +10,7 @@ operated by non-technical users during a live event.
 
 - **Languages:** English, French, German, Luxembourgish (invoices are French)
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 3.4
+- **Version:** 3.4.1
 - **License:** MIT
 
 ---
@@ -81,7 +81,7 @@ Linux you may need `sudo apt install python3-tk`.
 ## Building the executables
 
 Builds are produced automatically by GitHub Actions
-(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.4`
+(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.4.1`
 builds the Windows `.exe` and macOS `.app` and drafts a release with both
 attached. The workflow bundles `config.json` and `help.json` already; if you
 keep `watermark.png` and `logo.icns` in the repo, add them to the workflow's
@@ -138,6 +138,16 @@ Output naming:
 ---
 
 ## Changelog
+
+### v3.4.1
+- Fixed a freeze on macOS caused by button tooltips. Tooltips were borderless
+  always-on-top windows positioned over the button; clicking one (instead of
+  the button) could freeze the app. Tooltips are now created on hover, shown
+  below the widget so they never cover the click target, and dismissed on any
+  click.
+- The catch-logging participant drop-down now refreshes immediately after a
+  catch is logged, so the participant moves to the "Already recorded" section
+  without needing to save/reload the event.
 
 ### v3.4
 - **Critical fix:** invoices created in a brand-new event (one started via

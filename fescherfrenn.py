@@ -21,7 +21,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "3.4"
+APP_VERSION = "3.4.1"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -709,23 +709,60 @@ class FishingApp:
         self.catch_name.config(foreground='black')
 
     def create_tooltip(self, widget, text):
-        tooltip = tk.Toplevel(self.root)
-        tooltip.wm_overrideredirect(True)
-        tooltip.wm_geometry("+0+0")
-        label = ttk.Label(tooltip, text=text, background="lightyellow", relief="solid", borderwidth=1)
-        label.pack()
-        tooltip.withdraw()
+        """Hover tooltip that is safe on macOS.
 
-        def show(event):
-            x, y = event.widget.winfo_rootx() + 20, event.widget.winfo_rooty() + 20
-            tooltip.wm_geometry(f"+{x}+{y}")
-            tooltip.deiconify()
+        The previous implementation kept a persistent borderless (overrideredirect)
+        window per widget and positioned it over the widget; on macOS, clicking a
+        borderless window sitting on top of the intended target froze the app.
+        This version creates the tooltip on hover, places it *below* the widget so
+        it never covers the click target, and destroys it on leave or on any click.
+        """
+        if not text:
+            return
+        state = {"win": None, "after": None}
 
-        def hide(event):
-            tooltip.withdraw()
+        def _build():
+            state["after"] = None
+            if state["win"] is not None:
+                return
+            try:
+                x = widget.winfo_rootx() + 12
+                y = widget.winfo_rooty() + widget.winfo_height() + 4
+                win = tk.Toplevel(widget)
+                win.wm_overrideredirect(True)
+                try:
+                    win.wm_attributes("-topmost", True)
+                except tk.TclError:
+                    pass
+                ttk.Label(win, text=text, background="lightyellow",
+                          relief="solid", borderwidth=1, padding=3).pack()
+                win.wm_geometry(f"+{x}+{y}")
+                state["win"] = win
+            except tk.TclError:
+                state["win"] = None
 
-        widget.bind("<Enter>", show)
-        widget.bind("<Leave>", hide)
+        def hide(_event=None):
+            if state["after"] is not None:
+                try:
+                    widget.after_cancel(state["after"])
+                except Exception:
+                    pass
+                state["after"] = None
+            if state["win"] is not None:
+                try:
+                    state["win"].destroy()
+                except tk.TclError:
+                    pass
+                state["win"] = None
+
+        def schedule(_event=None):
+            hide()
+            state["after"] = widget.after(500, _build)
+
+        widget.bind("<Enter>", schedule, add="+")
+        widget.bind("<Leave>", hide, add="+")
+        widget.bind("<Button>", hide, add="+")
+        widget.bind("<Destroy>", hide, add="+")
 
     def show_help(self):
         """Help dialog with a left-side section list and a right-side reader pane.
@@ -882,6 +919,8 @@ class FishingApp:
             self.catch_name_var.set('')
             self.on_combobox_focus_out(None)
             self.refresh_rankings()
+            if self.catch_name is not None:
+                self.catch_name["values"] = self.catch_dropdown_values()
             self.update_event()
             messagebox.showinfo("Success", L["saved"])
         except ValueError:
