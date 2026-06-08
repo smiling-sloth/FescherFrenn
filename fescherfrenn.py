@@ -1065,8 +1065,10 @@ class FishingApp:
             (has_catch if sess["catches"].get(n) else no_catch).append(n)
         out = list(no_catch)
         if has_catch:
-            if out:
-                out.append(L["catch_recorded_group"])
+            # Always show the header before the recorded group - even when the
+            # top (not-yet-recorded) section is empty, so the operator can see
+            # at a glance that everyone has already been logged.
+            out.append(L["catch_recorded_group"])
             out.extend(has_catch)
         return out
 
