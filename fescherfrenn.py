@@ -8,6 +8,7 @@ import getpass
 import logging
 import re
 import webbrowser
+import subprocess
 
 try:
     from reportlab.lib.pagesizes import letter, landscape, A4
@@ -21,7 +22,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "3.4.1"
+APP_VERSION = "3.4.2"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -1726,6 +1727,23 @@ class FishingApp:
             except ValueError:
                 return None
 
+        def open_selected_pdf(_evt=None):
+            sel = tv.selection()
+            if not sel:
+                return
+            try:
+                idx = int(sel[0])
+            except ValueError:
+                return  # placeholder "no invoices" row
+            inv = self.data["invoices"][idx]
+            path = self._invoice_pdf_path(inv)
+            if os.path.exists(path):
+                self.open_file_external(path)
+            else:
+                messagebox.showinfo(L["manage_invoices"], L["inv_pdf_missing"])
+
+        tv.bind("<Double-1>", open_selected_pdf)
+
         def do_new():
             # On macOS, two stacked grabs (manager + form) breaks click routing
             # if the form has no grab of its own. Release the manager's grab
@@ -1756,7 +1774,8 @@ class FishingApp:
             inv = self.data["invoices"][idx]
             try:
                 self.write_invoice_pdf(inv)
-                messagebox.showinfo("", L["inv_saved"])
+                if messagebox.askyesno("", L["inv_saved_open_q"]):
+                    self.open_file_external(self._invoice_pdf_path(inv))
             except Exception as e:
                 logging.error(f"Reprint failed: {e}")
                 messagebox.showerror("Error", str(e))
@@ -1812,6 +1831,24 @@ class FishingApp:
         n = int(self.data["invoice_next"])
         self.data["invoice_next"] = n + 1
         return n
+
+    @staticmethod
+    def open_file_external(path):
+        """Open a file with the OS default application (cross-platform).
+
+        Returns True on success, False otherwise (errors are logged, not raised:
+        a viewer problem must never break the invoicing flow)."""
+        try:
+            if sys.platform.startswith("darwin"):
+                subprocess.Popen(["open", path])
+            elif os.name == "nt":
+                os.startfile(path)  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", path])
+            return True
+        except Exception as e:
+            logging.error(f"open_file_external failed for {path}: {e}")
+            return False
 
     def _invoice_pdf_path(self, inv):
         event = self.data["event"]
@@ -2134,7 +2171,8 @@ class FishingApp:
                     self.data["invoice_unit_price"] = price
 
             self.update_event()
-            messagebox.showinfo("", L["inv_saved"])
+            if messagebox.askyesno("", L["inv_saved_open_q"]):
+                self.open_file_external(self._invoice_pdf_path(invoice))
             if on_done:
                 on_done()
             dlg.destroy()

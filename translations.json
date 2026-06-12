@@ -187,7 +187,9 @@
     "inv_already_invoiced_group": "-- Already Invoiced --",
     "inv_warn_this_club_already_invoiced": "Warning: this club has already been invoiced.",
     "catch_recorded_group": "-- Already recorded --",
-    "inv_qty_indiv_high": "Note: more than 4 sessions for an individual. Unusual, but allowed (e.g. a caretaker paying for a minor). The invoice will be created."
+    "inv_qty_indiv_high": "Note: more than 4 sessions for an individual. Unusual, but allowed (e.g. a caretaker paying for a minor). The invoice will be created.",
+    "inv_saved_open_q": "Invoice saved. Open the PDF now?",
+    "inv_pdf_missing": "The PDF file for this invoice was not found. Use Reprint to regenerate it."
   },
   "French": {
     "title": "Registre de Concours de Pêche Fëscherfrënn Stengefort",
@@ -377,7 +379,9 @@
     "inv_already_invoiced_group": "-- Déjà facturés --",
     "inv_warn_this_club_already_invoiced": "Attention : ce club a déjà été facturé.",
     "catch_recorded_group": "-- Déjà enregistrés --",
-    "inv_qty_indiv_high": "Note : plus de 4 manches pour un individuel. Inhabituel, mais autorisé (p. ex. un tuteur payant pour un mineur). La facture sera créée."
+    "inv_qty_indiv_high": "Note : plus de 4 manches pour un individuel. Inhabituel, mais autorisé (p. ex. un tuteur payant pour un mineur). La facture sera créée.",
+    "inv_saved_open_q": "Facture enregistrée. Ouvrir le PDF maintenant ?",
+    "inv_pdf_missing": "Le fichier PDF de cette facture est introuvable. Utilisez Réimprimer pour le régénérer."
   },
   "German": {
     "title": "Fëscherfrënn Stengefort Angelwettbewerb Register",
@@ -567,7 +571,9 @@
     "inv_already_invoiced_group": "-- Bereits in Rechnung gestellt --",
     "inv_warn_this_club_already_invoiced": "Warnung: dieser Verein wurde bereits in Rechnung gestellt.",
     "catch_recorded_group": "-- Bereits erfasst --",
-    "inv_qty_indiv_high": "Hinweis: mehr als 4 Runden für eine Einzelperson. Ungewöhnlich, aber erlaubt (z. B. ein Betreuer zahlt für einen Minderjährigen). Die Rechnung wird erstellt."
+    "inv_qty_indiv_high": "Hinweis: mehr als 4 Runden für eine Einzelperson. Ungewöhnlich, aber erlaubt (z. B. ein Betreuer zahlt für einen Minderjährigen). Die Rechnung wird erstellt.",
+    "inv_saved_open_q": "Rechnung gespeichert. PDF jetzt öffnen?",
+    "inv_pdf_missing": "Die PDF-Datei dieser Rechnung wurde nicht gefunden. Mit „Erneut drucken“ neu erzeugen."
   },
   "Luxembourgish": {
     "title": "Fëscherfrënn Stengefort Fëschkonkurrenz Register",
@@ -757,6 +763,8 @@
     "inv_already_invoiced_group": "-- Schonn faktureéiert --",
     "inv_warn_this_club_already_invoiced": "Warnung: dee Veräin gouf scho faktureéiert.",
     "catch_recorded_group": "-- Scho festgehal --",
-    "inv_qty_indiv_high": "Notiz: méi wéi 4 Manchen fir eng Eenzelpersoun. Ongewéinlech, awer erlaabt (z. B. e Betreier bezuelt fir e Mannerjäregen). D'Rechnung gëtt erstallt."
+    "inv_qty_indiv_high": "Notiz: méi wéi 4 Manchen fir eng Eenzelpersoun. Ongewéinlech, awer erlaabt (z. B. e Betreier bezuelt fir e Mannerjäregen). D'Rechnung gëtt erstallt.",
+    "inv_saved_open_q": "Rechnung gespäichert. PDF elo opmaachen?",
+    "inv_pdf_missing": "D'PDF-Datei vun dëser Rechnung gouf net fonnt. Mat „Nei drécken“ nei erstellen."
   }
 }
