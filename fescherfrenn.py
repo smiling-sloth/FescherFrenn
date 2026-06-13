@@ -23,7 +23,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "3.6"
+APP_VERSION = "3.7"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -467,6 +467,13 @@ class FishingApp:
                 val = int(raw)
                 if val < minimum:
                     raise ValueError
+                # Normalize the display: "0004" -> "4".
+                if str(val) != raw:
+                    try:
+                        widget.delete(0, tk.END)
+                        widget.insert(0, str(val))
+                    except tk.TclError:
+                        pass
                 return val
             except ValueError:
                 messagebox.showerror("Error", L["cfg_invalid_int"].format(field=label, min=minimum))
@@ -1033,6 +1040,79 @@ class FishingApp:
         span = "2025" if yr <= 2025 else f"2025 - {yr}"
         return L["copyright"].replace("{year_span}", span)
 
+    @staticmethod
+    def _competition_places(ranked):
+        """1224-style ranking. ``ranked`` is [(name, value), ...] sorted by
+        value descending. Returns [(name, value, place), ...] where equal
+        values share a place and the next place jumps by the group size
+        (three tied at 5th -> next is 8th)."""
+        out = []
+        for i, (name, value) in enumerate(ranked):
+            if i == 0 or value != ranked[i - 1][1]:
+                place = i + 1
+            out.append((name, value, place))
+        return out
+
+    def round_weight_ranking(self, round_key):
+        """(name, total_weight, place) for participants in a round who caught
+        at least one fish, ranked by total weight (tie ranking applied)."""
+        sess = self.data["sessions"][round_key]
+        weights = {}
+        for n in sess["participants"]:
+            cs = sess["catches"].get(n, [])
+            if sum(c.get("num_catches", 1) for c in cs) >= 1:  # >= 1 fish
+                weights[n] = sum(c["weight"] for c in cs)
+        ranked = sorted(weights.items(), key=lambda x: (-x[1], x[0]))
+        return self._competition_places(ranked)
+
+    def _qualifiers_for_round(self, round_key, already, xproc, tie_resolver=None):
+        """Qualifiers for one round. Eligible = caught >=1 fish and not already
+        qualified in an earlier round. Fill up to ``xproc`` slots best-first.
+        A tie group larger than the remaining slots is resolved by
+        ``tie_resolver(round_key, names, slots)`` (returns the chosen names);
+        if no resolver is given, those slots are left unfilled and the tie is
+        reported in ``pending_tie``.
+        """
+        placed = [(n, w, p) for (n, w, p) in self.round_weight_ranking(round_key)
+                  if n not in already]
+        qualified, pending_tie = [], []
+        slots = xproc
+        i = 0
+        while i < len(placed) and slots > 0:
+            place = placed[i][2]
+            group = [n for (n, w, p) in placed if p == place]
+            if len(group) <= slots:
+                qualified.extend(group)
+                slots -= len(group)
+                i += len(group)
+            else:
+                if tie_resolver is not None:
+                    chosen = (tie_resolver(round_key, group, slots) or [])[:slots]
+                    qualified.extend(chosen)
+                    slots -= len(chosen)
+                else:
+                    pending_tie = group
+                break
+        return {"qualified": qualified, "pending_tie": pending_tie, "slots_left": slots}
+
+    def compute_qualifiers(self, tie_resolver=None):
+        """Walk the rounds (all SESSION_KEYS except 'final') in order, carrying
+        a running already-qualified set. Returns
+        {'qualified': set, 'per_round': {round_key: result}}.
+
+        Key rule: a slot is only ever filled by someone who caught >=1 fish, so
+        a round may contribute fewer than xproc qualifiers (the rest stay open).
+        """
+        cfg = self.data.get("config", {})
+        xproc = cfg.get("xproc", 10)
+        rounds = [k for k in SESSION_KEYS if k != "final"]
+        already, per_round = set(), {}
+        for rk in rounds:
+            res = self._qualifiers_for_round(rk, already, xproc, tie_resolver)
+            per_round[rk] = res
+            already.update(res["qualified"])
+        return {"qualified": already, "per_round": per_round}
+
     def compute_rankings(self, catches_dict, title):
         """Return a list of (text, tag) segments for a rankings block.
 
@@ -1357,6 +1437,32 @@ class FishingApp:
                 messagebox.showinfo(L["manage_participants"],
                                     L["already_in_manche"].format(name=sel[0]))
 
+        def suggest_finalists():
+            # Only meaningful when arranging the final's roster.
+            if self.current_manche != "final":
+                messagebox.showinfo(L["manage_participants"], L["qual_only_final"])
+                return
+
+            def tie_resolver(round_key, names, slots):
+                return self._ask_tie_choice(win, round_key, names, slots)
+
+            result = self.compute_qualifiers(tie_resolver=tie_resolver)
+            qualified = result["qualified"]
+            if not qualified:
+                messagebox.showinfo(L["manage_participants"], L["qual_none"])
+                return
+            sess = self.data["sessions"]["final"]
+            added = 0
+            for name in sorted(qualified, key=str.lower):
+                if name not in sess["participants"]:
+                    sess["participants"].append(name)
+                    sess["catches"].setdefault(name, [])
+                    added += 1
+            self.update_event()
+            refresh_panes()
+            self.refresh_manche_view()
+            messagebox.showinfo(L["manage_participants"], L["qual_done"].format(n=added))
+
         def remove_from_manche():
             sel = need_selection(manche_tv)
             if not sel:
@@ -1377,6 +1483,7 @@ class FishingApp:
         ttk.Button(roster_btns, text=L["remove"], command=remove_selected).pack(side="left", padx=2)
         ttk.Button(mid, text=L["add_to_manche"], command=add_to_manche).pack(pady=10, fill="x")
         ttk.Button(mid, text=L["remove_from_manche"], command=remove_from_manche).pack(pady=10, fill="x")
+        ttk.Button(mid, text=L["suggest_finalists"], command=suggest_finalists).pack(pady=(20, 4), fill="x")
         close_bar.columnconfigure(0, weight=1)
         ttk.Button(close_bar, text=L["close"], command=win.destroy).grid(row=0, column=0, pady=6)
 
@@ -3208,6 +3315,45 @@ class FishingApp:
         top.bind("<Return>", lambda e: ok())
         top.wait_window()
         return result["value"]
+
+    def _ask_tie_choice(self, parent, round_key, names, slots):
+        """Modal multi-select: operator picks exactly `slots` of the tied
+        `names` to proceed to the final. Returns the chosen list, or [] if
+        cancelled (cancel leaves those final slots unfilled)."""
+        L = LANGUAGES[self.lang]
+        top = Toplevel(parent)
+        top.title(L["qual_tie_title"])
+        top.transient(parent)
+        top.update_idletasks()
+        top.grab_set()
+        top.geometry("420x380")
+        frame = ttk.Frame(top, padding=12)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, wraplength=380, justify="left",
+                  text=L["qual_tie_prompt"].format(
+                      rnd=key_to_display(self.lang, round_key),
+                      n=len(names), slots=slots)).pack(anchor="w", pady=(0, 8))
+        lb = tk.Listbox(frame, selectmode="multiple", height=10,
+                        font=("Arial", self.font_size), exportselection=False)
+        for nm in names:
+            lb.insert(tk.END, nm)
+        lb.pack(fill="both", expand=True)
+        chosen = {"value": []}
+
+        def confirm():
+            picks = [names[i] for i in lb.curselection()]
+            if len(picks) != slots:
+                messagebox.showwarning("", L["qual_pick_count"].format(slots=slots))
+                return
+            chosen["value"] = picks
+            top.destroy()
+
+        btns = ttk.Frame(frame)
+        btns.pack(fill="x", pady=(8, 0))
+        ttk.Button(btns, text="OK", command=confirm).pack(side="right", padx=4)
+        ttk.Button(btns, text=L["cancel"], command=top.destroy).pack(side="right", padx=4)
+        top.wait_window()
+        return chosen["value"]
 
     def _raise_open_panel(self):
         """If a working panel is already open, raise it and return True.

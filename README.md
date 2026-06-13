@@ -10,7 +10,7 @@ operated by non-technical users during a live event.
 
 - **Languages:** English, French, German, Luxembourgish (invoices are French)
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 3.6
+- **Version:** 3.7
 - **License:** MIT
 
 ---
@@ -81,7 +81,7 @@ Linux you may need `sudo apt install python3-tk`.
 ## Building the executables
 
 Builds are produced automatically by GitHub Actions
-(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.6`
+(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.7`
 builds the Windows `.exe` and macOS `.app` and drafts a release with both
 attached. The workflow bundles `config.json` and `help.json` already; if you
 keep `watermark.png` and `logo.icns` in the repo, add them to the workflow's
@@ -138,6 +138,25 @@ Output naming:
 ---
 
 ## Changelog
+
+### v3.7 (in progress - Group C part 1)
+- Qualification engine: computes who proceeds to the final, round by round.
+  Within a round, eligible anglers (those who caught at least one fish, and
+  not already qualified in an earlier round) are ranked by total weight and
+  the top "proceed-to-final" (Xproc) qualify. A round contributes fewer than
+  Xproc when fewer eligible anglers caught a fish - empty slots are never
+  filled by a zero-catch angler.
+- Tie ranking (1224 style): equal totals share a place and the next place
+  jumps by the group size (three tied at 5th -> next is 8th).
+- Tie for the last proceeding place: a dialog asks the operator to pick
+  exactly who proceeds.
+- "Suggest finalists" button in the Participants Manager (on the Final
+  round) adds all qualifiers to the final's participants as an editable
+  suggestion.
+- Config integer fields (max per round, proceed-to-final) normalise leading
+  zeros on lock ("0004" -> "4").
+- Still to come in v3.7: highlighting qualifiers in the reports and a
+  readable highlight colour picker.
 
 ### v3.6
 - Event configuration added (foundation of the new competition rules):
