@@ -168,6 +168,7 @@ def new_event_data(lang="English"):
         "track_details": False,
         "config": {"num_rounds": 3, "max_per_round": 30, "xproc": 10},
         "config_locked": False,
+        "report_highlight": True, "report_highlight_colour": "green",
         "lang": lang, "version": APP_VERSION,
     }
 
@@ -242,6 +243,8 @@ def migrate_data(data):
     cfg.setdefault("max_per_round", 30)
     cfg.setdefault("xproc", 10)
     data.setdefault("config_locked", False)
+    data.setdefault("report_highlight", True)
+    data.setdefault("report_highlight_colour", "green")
     data.setdefault("lang", "English")
     data["version"] = APP_VERSION
     return data
@@ -656,6 +659,8 @@ class FishingApp:
         btn_frame.pack(fill="x", pady=3)
         self.report_btn = ttk.Button(btn_frame, text=L["generate_report"], command=self.generate_report)
         self.report_btn.pack(side=tk.LEFT, padx=3)
+        self.open_report_btn = ttk.Button(btn_frame, text=L["reports_btn"], command=self.open_reports_panel)
+        self.open_report_btn.pack(side=tk.LEFT, padx=3)
         self.reset_btn = ttk.Button(btn_frame, text=L["reset_event"], command=self.reset_event)
         self.reset_btn.pack(side=tk.LEFT, padx=3)
         self.export_btn = ttk.Button(btn_frame, text=L["export_event"], command=self.export_event)
@@ -698,6 +703,31 @@ class FishingApp:
             settings_frame, text=L["chk_combined"], variable=self.include_combined_var)
         self.combined_chk.pack(anchor="w", pady=2)
         self._update_combined_state()
+
+        # -- Finalist highlight (round reports) --
+        self.highlight_var = tk.BooleanVar(value=self.data.get("report_highlight", True))
+        def _on_highlight_toggle():
+            self.data["report_highlight"] = self.highlight_var.get()
+        ttk.Checkbutton(settings_frame, text=L["report_highlight_label"],
+                        variable=self.highlight_var,
+                        command=_on_highlight_toggle).pack(anchor="w", pady=2)
+        colour_row = ttk.Frame(settings_frame)
+        colour_row.pack(anchor="w", pady=2, fill="x")
+        ttk.Label(colour_row, text=f'{L["report_highlight_colour"]}:',
+                  font=("Arial", self.font_size - 2)).pack(side="left")
+        self.highlight_colour_var = tk.StringVar(value=self.data.get("report_highlight_colour", "green"))
+        colour_labels = {"green": L["col_green"], "yellow": L["col_yellow"],
+                         "blue": L["col_blue"], "grey": L["col_grey"], "red": L["col_red"]}
+        self._highlight_colour_label_to_key = {v: k for k, v in colour_labels.items()}
+        colour_combo = ttk.Combobox(colour_row, state="readonly", width=10,
+                                    values=list(colour_labels.values()),
+                                    font=("Arial", self.font_size - 2))
+        colour_combo.set(colour_labels.get(self.highlight_colour_var.get(), L["col_green"]))
+        def _on_colour_pick(_e=None):
+            key = self._highlight_colour_label_to_key.get(colour_combo.get(), "green")
+            self.data["report_highlight_colour"] = key
+        colour_combo.bind("<<ComboboxSelected>>", _on_colour_pick)
+        colour_combo.pack(side="left", padx=6)
 
         # -- Footer: version bottom-left, copyright centred --
         footer_frame = ttk.Frame(self.main_frame)
@@ -1420,6 +1450,7 @@ class FishingApp:
             if current + len(to_add) > max_per:
                 room = max(max_per - current, 0)
                 messagebox.showwarning("", L["cfg_round_full"].format(
+                    rnd=key_to_display(self.lang, self.current_manche),
                     maxp=max_per, room=room))
                 if room == 0:
                     return
@@ -2790,6 +2821,21 @@ class FishingApp:
         ttk.Button(btn_bar, text=L["close"], command=dlg.destroy).pack(side="right", padx=4)
         dlg.wait_window()
 
+    # Light, print-friendly highlight tones - dark text stays readable on all.
+    REPORT_HIGHLIGHT_COLOURS = {
+        "green":  (0.82, 0.93, 0.80),
+        "yellow": (0.99, 0.96, 0.78),
+        "blue":   (0.81, 0.89, 0.97),
+        "grey":   (0.89, 0.89, 0.89),
+        "red":    (0.98, 0.84, 0.82),
+    }
+
+    def _report_highlight_colour(self):
+        from reportlab.lib.colors import Color
+        key = self.data.get("report_highlight_colour", "green")
+        rgb = self.REPORT_HIGHLIGHT_COLOURS.get(key, self.REPORT_HIGHLIGHT_COLOURS["green"])
+        return Color(*rgb)
+
     def generate_report(self):
         L = LANGUAGES[self.lang]
         if not self.data["participants"]:
@@ -2883,6 +2929,20 @@ class FishingApp:
 
             sess_total_catches = 0
             sess_total_weight = 0
+            # Qualifiers proceeding to the final FROM this round (Group C).
+            # Highlighted only on round reports, never on the final's own report.
+            highlight_rows = []
+            highlight_colour = None
+            if sk != "final" and self.data.get("report_highlight", True):
+                try:
+                    qres = self.compute_qualifiers()
+                    qualified_here = set(qres["per_round"].get(sk, {}).get("qualified", []))
+                    highlight_colour = self._report_highlight_colour()
+                except Exception as e:
+                    logging.error(f"highlight computation failed: {e}")
+                    qualified_here = set()
+            else:
+                qualified_here = set()
             for rank_i, name in enumerate(sorted_names, 1):
                 catches = sess["catches"].get(name, [])
                 total_catches = sum(c["num_catches"] for c in catches) if catches else 0
@@ -2892,6 +2952,8 @@ class FishingApp:
                 sess_total_weight += total_weight
                 info = self.data["participants"].get(name, {})
                 cat_disp = L["category_options"].get(info.get("category", ""), info.get("category", ""))
+                if name in qualified_here:
+                    highlight_rows.append(len(table))  # current row index in `table`
                 row = [
                     Paragraph(str(rank_i), normal_style),
                     Paragraph(str(name), normal_style),
@@ -2904,7 +2966,11 @@ class FishingApp:
                 if track:
                     row.append(Paragraph(f"{longest}" if longest else "", normal_style))
                 table.append(row)
-            story.append(Table(table, colWidths=sum_widths, style=common_style, repeatRows=1))
+            summary_style = list(common_style)
+            if highlight_colour is not None:
+                for r in highlight_rows:
+                    summary_style.append(("BACKGROUND", (0, r), (-1, r), highlight_colour))
+            story.append(Table(table, colWidths=sum_widths, style=summary_style, repeatRows=1))
             story.append(Spacer(1, 8))
             summary_text = (f"{L['summary']} {len(names_in_sess)} {L['summary_participants']}, "
                             f"{sess_total_catches} {L['summary_total_catches']}, "
@@ -3066,12 +3132,85 @@ class FishingApp:
                 canvas.restoreState()
 
             doc.build(story, onFirstPage=add_footer, onLaterPages=add_footer)
-            messagebox.showinfo(
-                "Success",
-                L["report_generated"].replace("[date]_[event_name]", f"{date_str}_{event_name_file}_{sk}"))
+            if messagebox.askyesno("", L["report_open_q"]):
+                self.open_file_external(filename)
         except Exception as e:
             logging.error(f"generate_report failed: {e}")
             messagebox.showerror("Error", f"Report generation failed: {type(e).__name__}: {e}")
+
+    def _event_report_files(self):
+        """Report PDFs for the current event: list of (label, path), round
+        order then any extras. Reports live only in the event folder."""
+        L = LANGUAGES[self.lang]
+        ev = self.data.get("event", {})
+        name_file = str(ev.get("name", "event")).replace(" ", "_")
+        date = str(ev.get("date", ""))
+        try:
+            date_str = datetime.strptime(date, "%d/%m/%Y").strftime("%Y%m%d")
+        except ValueError:
+            return []
+        folder = f"{date_str}_{name_file}"
+        if not os.path.isdir(folder):
+            return []
+        out = []
+        # Known per-round/final report files, in round order.
+        for sk in SESSION_KEYS:
+            fn = os.path.join(folder, f"{folder}_{sk}.pdf")
+            if os.path.exists(fn):
+                out.append((key_to_display(self.lang, sk), fn))
+        return out
+
+    def open_reports_panel(self):
+        if self._raise_open_panel():
+            return
+        L = LANGUAGES[self.lang]
+        reports = self._event_report_files()
+
+        win = Toplevel(self.root)
+        win.title(L["reports_panel_title"])
+        win.transient(self.root)
+        win.update_idletasks()
+        win.grab_set()
+        win.geometry("560x380")
+        self._register_panel(win)
+
+        outer = ttk.Frame(win, padding=10)
+        outer.pack(fill="both", expand=True)
+        btns = ttk.Frame(outer)
+        btns.pack(side="bottom", fill="x", pady=(8, 0))
+
+        cols = ("round", "file")
+        tv = ttk.Treeview(outer, columns=cols, show="headings", height=12)
+        tv.heading("round", text=L["reports_col_round"])
+        tv.heading("file", text=L["reports_col_file"])
+        tv.column("round", width=160, anchor="w")
+        tv.column("file", width=360, anchor="w")
+        sb = ttk.Scrollbar(outer, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        tv.pack(side="top", fill="both", expand=True)
+
+        if reports:
+            for idx, (label, path) in enumerate(reports):
+                tv.insert("", "end", iid=str(idx),
+                          values=(label, os.path.basename(path)))
+        else:
+            tv.insert("", "end", values=("", L["reports_no_files"]))
+
+        def open_selected(_evt=None):
+            sel = tv.selection()
+            if not sel:
+                return
+            try:
+                idx = int(sel[0])
+            except ValueError:
+                return
+            self.open_file_external(reports[idx][1])
+
+        tv.bind("<Double-1>", open_selected)
+        ttk.Button(btns, text=L["reports_open"], command=open_selected).pack(side="left", padx=3)
+        ttk.Button(btns, text=L["cancel"], command=win.destroy).pack(side="right", padx=3)
+        win.bind("<Return>", open_selected)
 
     def custom_dialog(self, title, message, buttons):
         dialog = Toplevel(self.root)

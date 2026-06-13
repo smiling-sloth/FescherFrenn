@@ -139,7 +139,7 @@ Output naming:
 
 ## Changelog
 
-### v3.7 (in progress - Group C part 1)
+### v3.7 (Group C - ranking, qualification & reports)
 - Qualification engine: computes who proceeds to the final, round by round.
   Within a round, eligible anglers (those who caught at least one fish, and
   not already qualified in an earlier round) are ranked by total weight and
@@ -155,8 +155,16 @@ Output naming:
   suggestion.
 - Config integer fields (max per round, proceed-to-final) normalise leading
   zeros on lock ("0004" -> "4").
-- Still to come in v3.7: highlighting qualifiers in the reports and a
-  readable highlight colour picker.
+- Round reports highlight the participants who proceed to the final (never
+  on the final's own report), in a readable, print-friendly colour chosen
+  from the Report Settings panel (green / yellow / blue / grey / red).
+  Highlighting can be switched off.
+- Generate Report now asks whether to open the PDF (Yes/No), like invoices.
+- New "Open Report" panel lists the report PDFs that exist for the current
+  event; double-click or Open to view. No Browse - reports stay within the
+  event folder.
+- Fixed a doubled word ("Round Round 1") in the tie and round-limit
+  messages; both now name the round once.
 
 ### v3.6
 - Event configuration added (foundation of the new competition rules):
