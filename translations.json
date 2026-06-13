@@ -130,7 +130,7 @@
     "manage_invoices": "Manage Invoices",
     "new_invoice": "New Invoice",
     "edit_invoice": "Edit Invoice",
-    "reprint_invoice": "Reprint",
+    "reprint_invoice": "Open",
     "confirm_delete_invoice": "Delete this invoice? The number will not be reused.",
     "no_invoices": "No invoices issued yet.",
     "inv_number": "Invoice number",
@@ -189,7 +189,10 @@
     "catch_recorded_group": "-- Already recorded --",
     "inv_qty_indiv_high": "Note: more than 4 sessions for an individual. Unusual, but allowed (e.g. a caretaker paying for a minor). The invoice will be created.",
     "inv_saved_open_q": "Invoice saved. Open the PDF now?",
-    "inv_pdf_missing": "The PDF file for this invoice was not found. Use Reprint to regenerate it."
+    "inv_pdf_missing": "The PDF file for this invoice was not found. Use Reprint to regenerate it.",
+    "inv_invalid_date": "Invalid date. Use the format dd/mm/yyyy.",
+    "inv_pick_date": "Pick a date",
+    "cancel": "Cancel"
   },
   "French": {
     "title": "Registre de Concours de Pêche Fëscherfrënn Stengefort",
@@ -322,7 +325,7 @@
     "manage_invoices": "Gérer les factures",
     "new_invoice": "Nouvelle facture",
     "edit_invoice": "Modifier la facture",
-    "reprint_invoice": "Réimprimer",
+    "reprint_invoice": "Ouvrir",
     "confirm_delete_invoice": "Supprimer cette facture ? Le numéro ne sera pas réutilisé.",
     "no_invoices": "Aucune facture émise pour le moment.",
     "inv_number": "Numéro de facture",
@@ -381,7 +384,10 @@
     "catch_recorded_group": "-- Déjà enregistrés --",
     "inv_qty_indiv_high": "Note : plus de 4 manches pour un individuel. Inhabituel, mais autorisé (p. ex. un tuteur payant pour un mineur). La facture sera créée.",
     "inv_saved_open_q": "Facture enregistrée. Ouvrir le PDF maintenant ?",
-    "inv_pdf_missing": "Le fichier PDF de cette facture est introuvable. Utilisez Réimprimer pour le régénérer."
+    "inv_pdf_missing": "Le fichier PDF de cette facture est introuvable. Utilisez Réimprimer pour le régénérer.",
+    "inv_invalid_date": "Date invalide. Utilisez le format jj/mm/aaaa.",
+    "inv_pick_date": "Choisir une date",
+    "cancel": "Annuler"
   },
   "German": {
     "title": "Fëscherfrënn Stengefort Angelwettbewerb Register",
@@ -514,7 +520,7 @@
     "manage_invoices": "Rechnungen verwalten",
     "new_invoice": "Neue Rechnung",
     "edit_invoice": "Rechnung bearbeiten",
-    "reprint_invoice": "Erneut drucken",
+    "reprint_invoice": "Öffnen",
     "confirm_delete_invoice": "Diese Rechnung löschen? Die Nummer wird nicht wiederverwendet.",
     "no_invoices": "Noch keine Rechnungen ausgestellt.",
     "inv_number": "Rechnungsnummer",
@@ -573,7 +579,10 @@
     "catch_recorded_group": "-- Bereits erfasst --",
     "inv_qty_indiv_high": "Hinweis: mehr als 4 Runden für eine Einzelperson. Ungewöhnlich, aber erlaubt (z. B. ein Betreuer zahlt für einen Minderjährigen). Die Rechnung wird erstellt.",
     "inv_saved_open_q": "Rechnung gespeichert. PDF jetzt öffnen?",
-    "inv_pdf_missing": "Die PDF-Datei dieser Rechnung wurde nicht gefunden. Mit „Erneut drucken“ neu erzeugen."
+    "inv_pdf_missing": "Die PDF-Datei dieser Rechnung wurde nicht gefunden. Mit „Erneut drucken“ neu erzeugen.",
+    "inv_invalid_date": "Ungültiges Datum. Format tt/mm/jjjj verwenden.",
+    "inv_pick_date": "Datum wählen",
+    "cancel": "Abbrechen"
   },
   "Luxembourgish": {
     "title": "Fëscherfrënn Stengefort Fëschkonkurrenz Register",
@@ -706,7 +715,7 @@
     "manage_invoices": "Rechnungen verwalten",
     "new_invoice": "Nei Rechnung",
     "edit_invoice": "Rechnung änneren",
-    "reprint_invoice": "Nei drécken",
+    "reprint_invoice": "Opmaachen",
     "confirm_delete_invoice": "Dës Rechnung läschen? D'Nummer gëtt net erëm benotzt.",
     "no_invoices": "Nach keng Rechnungen erausginn.",
     "inv_number": "Rechnungsnummer",
@@ -765,6 +774,9 @@
     "catch_recorded_group": "-- Scho festgehal --",
     "inv_qty_indiv_high": "Notiz: méi wéi 4 Manchen fir eng Eenzelpersoun. Ongewéinlech, awer erlaabt (z. B. e Betreier bezuelt fir e Mannerjäregen). D'Rechnung gëtt erstallt.",
     "inv_saved_open_q": "Rechnung gespäichert. PDF elo opmaachen?",
-    "inv_pdf_missing": "D'PDF-Datei vun dëser Rechnung gouf net fonnt. Mat „Nei drécken“ nei erstellen."
+    "inv_pdf_missing": "D'PDF-Datei vun dëser Rechnung gouf net fonnt. Mat „Nei drécken“ nei erstellen.",
+    "inv_invalid_date": "Ongëlteg Datum. Format dd/mm/jjjj benotzen.",
+    "inv_pick_date": "Datum auswielen",
+    "cancel": "Ofbriechen"
   }
 }

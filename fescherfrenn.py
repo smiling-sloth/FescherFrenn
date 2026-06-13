@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, Toplevel, messagebox, filedialog
-from tkcalendar import DateEntry
+from tkcalendar import DateEntry, Calendar
 import json
 import os
 from datetime import datetime
@@ -9,6 +9,7 @@ import logging
 import re
 import webbrowser
 import subprocess
+import sys
 
 try:
     from reportlab.lib.pagesizes import letter, landscape, A4
@@ -369,6 +370,8 @@ class FishingApp:
             self.reset_btn = None
             self.export_btn = None
             self.import_btn = None
+            self._open_panels = []
+            self._close_confirm_open = False
             self.help_btn = None
             self.catch_name_var = None  # Added for Combobox hint
             self.track_details_var = None   # event-level: record length & type
@@ -592,6 +595,8 @@ class FishingApp:
         self.settings_btn.pack(side=tk.LEFT, padx=3)
         self.help_btn = ttk.Button(btn_frame, text=L["help"], command=self.show_help)
         self.help_btn.pack(side=tk.LEFT, padx=3)
+        self.close_btn = ttk.Button(btn_frame, text=L["close"], command=self.on_closing)
+        self.close_btn.pack(side=tk.LEFT, padx=3)
 
         self.manche_pf = ttk.LabelFrame(
             right_frame,
@@ -783,6 +788,7 @@ class FishingApp:
         win.title(L["help"])
         win.transient(self.root)
         win.geometry("900x560")
+        self._register_panel(win)
 
         outer = ttk.Frame(win, padding=8)
         outer.pack(fill="both", expand=True)
@@ -1117,6 +1123,8 @@ class FishingApp:
 
     # -- Manage Participants window --------------------------------
     def open_participants_manager(self):
+        if self._raise_open_panel():
+            return
         if not self.check_event_details():
             return
         self.update_event()  # lock event details once we touch the roster
@@ -1128,6 +1136,7 @@ class FishingApp:
         win.update_idletasks()  # macOS: ensure window is mapped before grabbing
         win.grab_set()
         win.geometry("980x560")
+        self._register_panel(win)
 
         close_bar = ttk.Frame(win)
         close_bar.pack(side="bottom", fill="x")
@@ -1356,6 +1365,8 @@ class FishingApp:
 
     # -- Catch editor window ---------------------------------------
     def open_catch_editor(self):
+        if self._raise_open_panel():
+            return
         if not self.check_event_details():
             return
         L = LANGUAGES[self.lang]
@@ -1674,6 +1685,8 @@ class FishingApp:
                      L["inv_separator"], L["inv_already_invoiced_group"])
 
     def open_invoices_manager(self):
+        if self._raise_open_panel():
+            return
         if not self.check_event_details():
             return
         self.update_event()
@@ -1685,6 +1698,7 @@ class FishingApp:
         win.update_idletasks()  # macOS: ensure window is mapped before grabbing
         win.grab_set()
         win.geometry("840x440")
+        self._register_panel(win)
 
         outer = ttk.Frame(win, padding=10)
         outer.pack(fill="both", expand=True)
@@ -1768,16 +1782,21 @@ class FishingApp:
                     win.grab_set()
 
         def do_reprint():
+            # "Open": opens the invoice PDF immediately, no prompts (same as
+            # double-clicking the row). If the file is missing on disk (e.g.
+            # the event was imported on another machine), it is regenerated
+            # from the saved invoice data first, then opened.
             idx = selected_index()
             if idx is None:
                 return
             inv = self.data["invoices"][idx]
+            path = self._invoice_pdf_path(inv)
             try:
-                self.write_invoice_pdf(inv)
-                if messagebox.askyesno("", L["inv_saved_open_q"]):
-                    self.open_file_external(self._invoice_pdf_path(inv))
+                if not os.path.exists(path):
+                    self.write_invoice_pdf(inv)
+                self.open_file_external(path)
             except Exception as e:
-                logging.error(f"Reprint failed: {e}")
+                logging.error(f"Open invoice failed: {e}")
                 messagebox.showerror("Error", str(e))
 
         def do_delete():
@@ -1839,6 +1858,7 @@ class FishingApp:
         Returns True on success, False otherwise (errors are logged, not raised:
         a viewer problem must never break the invoicing flow)."""
         try:
+            path = os.path.abspath(path)
             if sys.platform.startswith("darwin"):
                 subprocess.Popen(["open", path])
             elif os.name == "nt":
@@ -1897,11 +1917,15 @@ class FishingApp:
         dlg = Toplevel(self.root)
         dlg.title(L["edit_invoice"] if editing else L["new_invoice"])
         dlg.transient(self.root)
-        # NOTE: do NOT call dlg.grab_set() here. tkcalendar's DateEntry popup
-        # opens as a separate Toplevel and is hidden behind a modal grab on
-        # this dialog. transient() is enough to keep the form on top of the
-        # main window without breaking the date picker.
         dlg.geometry("540x620")
+        self._register_panel(dlg)
+        # NOTE: no grab_set() on this form, and no Toplevel-level ButtonPress
+        # bindings either. Both have been tried and both break the tkcalendar
+        # popup and/or the recipient combobox popdown on macOS (a bind on a
+        # Toplevel fires for clicks on EVERY child widget, so a "re-grab on
+        # click" fights the popups the user is trying to open). The form is
+        # transient (stays above the main window); the main window's action
+        # buttons are guarded separately while any panel is open.
 
         frame = ttk.Frame(dlg, padding=14)
         frame.pack(fill="both", expand=True)
@@ -1932,34 +1956,51 @@ class FishingApp:
                   state="readonly", width=22).grid(row=row, column=1, pady=4, sticky="w")
         row += 1
 
-        # Date (defaults to event date, editable).
+        # Date (defaults to event date, editable). Plain entry + picker dialog;
+        # see open_date_picker for why no DateEntry drop-down is used here.
         ttk.Label(frame, text=L["inv_date"], font=("Arial", self.font_size)).grid(row=row, column=0, sticky="w", pady=4)
-        date_entry = DateEntry(frame, font=("Arial", self.font_size), date_pattern="dd/mm/yyyy", width=14)
-        date_entry.grid(row=row, column=1, pady=4, sticky="w")
+        date_row = ttk.Frame(frame)
+        date_row.grid(row=row, column=1, pady=4, sticky="w")
+        init_date = (existing.get("date") if editing else self.data["event"].get("date")) or ""
         try:
-            init_date = existing["date"] if editing else self.data["event"].get("date")
-            date_entry.set_date(init_date)
-        except Exception:
-            date_entry.set_date(datetime.now())
+            datetime.strptime(init_date, "%d/%m/%Y")
+        except (ValueError, TypeError):
+            init_date = datetime.now().strftime("%d/%m/%Y")
+        date_var = tk.StringVar(value=init_date)
+        date_field = ttk.Entry(date_row, textvariable=date_var,
+                               font=("Arial", self.font_size), width=12)
+        date_field.pack(side="left")
+
+        def pick_date():
+            chosen = self.open_date_picker(dlg, date_var.get())
+            if chosen:
+                date_var.set(chosen)
+
+        ttk.Button(date_row, text="\U0001F4C5", width=3, command=pick_date).pack(side="left", padx=(6, 0))
         row += 1
 
-        # Recipient type radios.
+        # Recipient type radios. Frozen in Edit mode: an invoice's identity is
+        # its recipient - to change who an invoice is for, delete it and issue
+        # a new one (the number is not recycled, keeping the sequence honest).
         ttk.Label(frame, text=L["inv_recipient_type"], font=("Arial", self.font_size)).grid(row=row, column=0, sticky="w", pady=4)
         type_var = tk.StringVar(value=(existing.get("recipient_type", "club") if editing else "club"))
         rt_frame = ttk.Frame(frame)
         rt_frame.grid(row=row, column=1, pady=4, sticky="w")
+        rb_state = "disabled" if editing else "normal"
         ttk.Radiobutton(rt_frame, text=L["inv_recipient_club"], variable=type_var, value="club",
+                        state=rb_state,
                         command=lambda: rebuild_recipient()).pack(side="left", padx=(0, 14))
         ttk.Radiobutton(rt_frame, text=L["inv_recipient_individual"], variable=type_var, value="individual",
+                        state=rb_state,
                         command=lambda: rebuild_recipient()).pack(side="left")
         row += 1
 
-        # Recipient dropdown (rebuilt when type changes).
+        # Recipient dropdown (rebuilt when type changes). Also frozen in Edit.
         rec_label = ttk.Label(frame, text=L["inv_select_club"], font=("Arial", self.font_size))
         rec_label.grid(row=row, column=0, sticky="w", pady=4)
         recipient_var = tk.StringVar(value=existing.get("recipient_name", "") if editing else "")
         recipient_combo = ttk.Combobox(frame, textvariable=recipient_var, font=("Arial", self.font_size),
-                                       width=28, state="readonly")
+                                       width=28, state=("disabled" if editing else "readonly"))
         recipient_combo.grid(row=row, column=1, pady=4, sticky="ew")
         row += 1
 
@@ -2077,6 +2118,10 @@ class FishingApp:
         if editing:
             recipient_var.set(existing.get("recipient_name", ""))
             on_recipient_picked()  # populate warnings on the edited invoice
+            # on_recipient_picked refills the quantity with the live suggestion;
+            # for an existing invoice the saved quantity is authoritative.
+            qty_entry.delete(0, tk.END)
+            qty_entry.insert(0, str(existing.get("quantity", 1)))
 
         def do_save():
             # Validate the chunk.
@@ -2131,7 +2176,12 @@ class FishingApp:
                         seq = self.data.get("invoice_seq_start") or 1
                 full_number = f'{CONFIG.get("invoice_prefix", "INV")}-{int(seq):02d}-{self.event_year()}'
 
-            date_str = date_entry.get_date().strftime("%d/%m/%Y")
+            date_str = date_var.get().strip()
+            try:
+                date_str = datetime.strptime(date_str, "%d/%m/%Y").strftime("%d/%m/%Y")
+            except ValueError:
+                messagebox.showerror("Error", L["inv_invalid_date"])
+                return
             amount = round(qty * price, 2)
 
             invoice = {
@@ -2418,6 +2468,8 @@ class FishingApp:
         return True
 
     def open_settings_dialog(self):
+        if self._raise_open_panel():
+            return
         L = LANGUAGES[self.lang]
         dlg = Toplevel(self.root)
         dlg.title(L["settings_title"])
@@ -2425,6 +2477,7 @@ class FishingApp:
         dlg.update_idletasks()  # macOS: ensure window is mapped before grabbing
         dlg.grab_set()
         dlg.geometry("640x680")
+        self._register_panel(dlg)
 
         outer = ttk.Frame(dlg, padding=12)
         outer.pack(fill="both", expand=True)
@@ -2893,14 +2946,102 @@ class FishingApp:
             logging.error(f"import_event failed: {str(e)}")
             messagebox.showerror(LANGUAGES[self.lang]["error"], f"Failed to import event: {str(e)}")
 
-    def on_closing(self):
-        if self.custom_dialog(LANGUAGES[self.lang]["close"], LANGUAGES[self.lang]["confirm_close"], [(LANGUAGES[self.lang]["yes"], True), (LANGUAGES[self.lang]["no"], False)]):
+    def open_date_picker(self, parent, initial_str=None):
+        """Modal dialog with an inline tkcalendar Calendar. Returns the chosen
+        date as 'dd/mm/yyyy', or None on cancel.
+
+        Used instead of tkcalendar's DateEntry drop-down inside Toplevel forms:
+        the drop-down is a borderless popup with its own global grab and is
+        unreliable on macOS there (blank/flashing calendar, freezes). An
+        ordinary modal dialog with the inline Calendar widget behaves like
+        every other panel in the app, which all work.
+        """
+        L = LANGUAGES[self.lang]
+        try:
+            init = datetime.strptime((initial_str or "").strip(), "%d/%m/%Y")
+        except (ValueError, TypeError):
+            init = datetime.now()
+        top = Toplevel(parent)
+        top.title(L["inv_pick_date"])
+        top.transient(parent)
+        top.update_idletasks()
+        top.grab_set()
+        cal = Calendar(top, selectmode="day", date_pattern="dd/mm/yyyy",
+                       year=init.year, month=init.month, day=init.day)
+        cal.pack(padx=10, pady=10, fill="both", expand=True)
+        result = {"value": None}
+
+        def ok():
+            result["value"] = cal.get_date()
+            top.destroy()
+
+        btns = ttk.Frame(top)
+        btns.pack(pady=(0, 10))
+        ttk.Button(btns, text="OK", command=ok).pack(side="left", padx=6)
+        ttk.Button(btns, text=L["cancel"], command=top.destroy).pack(side="left", padx=6)
+        cal.bind("<Double-1>", lambda e: ok())
+        top.bind("<Return>", lambda e: ok())
+        top.wait_window()
+        return result["value"]
+
+    def _raise_open_panel(self):
+        """If a working panel is already open, raise it and return True.
+
+        Main-window action buttons call this first. Normally a panel's modal
+        grab blocks the main window anyway; this guard covers the one gap
+        where no grab is held (while the invoice form is open) so a second
+        manager/settings/etc. can never be stacked on top.
+        """
+        panels = [w for w in self._open_panels if w.winfo_exists()]
+        self._open_panels = panels
+        if panels:
             try:
-                save_data(self.data, self.data["event"])
-            except Exception as e:
-                logging.error(f"on_closing save failed: {str(e)}")
-                messagebox.showerror("Error", LANGUAGES[self.lang]["error"])
-            self.root.destroy()
+                panels[-1].lift()
+                panels[-1].focus_force()
+                self.root.bell()
+            except tk.TclError:
+                pass
+            return True
+        return False
+
+    def _register_panel(self, win):
+        """Track an open working panel so the app refuses to quit under it."""
+        self._open_panels.append(win)
+
+        def _gone(evt):
+            if evt.widget is win and win in self._open_panels:
+                self._open_panels.remove(win)
+
+        win.bind("<Destroy>", _gone, add="+")
+
+    def on_closing(self):
+        # 1) The confirm dialog is already up: ignore repeated close clicks
+        #    (they used to stack one popup per click during UI lag).
+        if self._close_confirm_open:
+            return
+        # 2) A working panel is open: raise it instead of quitting under it.
+        panels = [w for w in self._open_panels if w.winfo_exists()]
+        self._open_panels = panels
+        if panels:
+            try:
+                panels[-1].lift()
+                panels[-1].focus_force()
+                self.root.bell()
+            except tk.TclError:
+                pass
+            return
+        # 3) Normal confirmed close.
+        self._close_confirm_open = True
+        try:
+            if self.custom_dialog(LANGUAGES[self.lang]["close"], LANGUAGES[self.lang]["confirm_close"], [(LANGUAGES[self.lang]["yes"], True), (LANGUAGES[self.lang]["no"], False)]):
+                try:
+                    save_data(self.data, self.data["event"])
+                except Exception as e:
+                    logging.error(f"on_closing save failed: {str(e)}")
+                    messagebox.showerror("Error", LANGUAGES[self.lang]["error"])
+                self.root.destroy()
+        finally:
+            self._close_confirm_open = False
 
 if __name__ == "__main__":
     try:
