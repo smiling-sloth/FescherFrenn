@@ -10,7 +10,7 @@ operated by non-technical users during a live event.
 
 - **Languages:** English, French, German, Luxembourgish (invoices are French)
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 3.7
+- **Version:** 3.8
 - **License:** MIT
 
 ---
@@ -81,7 +81,7 @@ Linux you may need `sudo apt install python3-tk`.
 ## Building the executables
 
 Builds are produced automatically by GitHub Actions
-(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.7`
+(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.8`
 builds the Windows `.exe` and macOS `.app` and drafts a release with both
 attached. The workflow bundles `config.json` and `help.json` already; if you
 keep `watermark.png` and `logo.icns` in the repo, add them to the workflow's
@@ -138,6 +138,34 @@ Output naming:
 ---
 
 ## Changelog
+
+### v3.8 (Package 3 - event management + branding assets)
+- Import Event and Manage Events are merged into a single "Events" panel
+  (those two were the real duplicates). It lists every saved event with
+  its date, name, invoice count and size on disk, and offers: Open (load
+  it), Delete (remove the whole event folder to free space), and Browse...
+  (load an event JSON from elsewhere - archives, emailed files).
+- Export Event stays a separate button that acts on the CURRENT open event
+  (not a list selection): a manual save/checkpoint available any time the
+  mandatory fields pass validation. It writes the canonical copy and then
+  offers a Save-As so you can place a portable copy anywhere.
+- Deletion safeguards: a named confirmation spelling out what will be
+  removed; events that contain invoices require typing the event name to
+  confirm (financial records get extra friction); the event currently
+  open cannot be deleted.
+- Report Settings: on the Final, "Highlight finalists" and its colour
+  picker are unticked and greyed out automatically (finalists are not
+  highlighted on the final's own report); they return to the stored
+  setting on any round.
+- Settings gains a "Branding & icons" section: upload, replace or remove the
+  logo, the invoice watermark and the application icon. Accepts PNG/JPG/JPEG
+  up to 5 MB each; images are resized automatically (aspect ratio preserved)
+  and saved in the format the app needs (logo.png, watermark.png, logo.ico).
+  Oversized files and unsupported types are rejected with a clear message.
+  The report/invoice images apply on the next generated PDF; the live window
+  icon and main-screen logo refresh when the app is next started.
+- Fixed the Export confirmation to show the full (absolute) path, including
+  the event's own folder, instead of a relative path.
 
 ### v3.7 (Group C - ranking, qualification & reports)
 - Qualification engine: computes who proceeds to the final, round by round.

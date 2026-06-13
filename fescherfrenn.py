@@ -23,7 +23,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "3.7"
+APP_VERSION = "3.8"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -378,9 +378,11 @@ class FishingApp:
             self.include_individual_var = tk.BooleanVar(value=False)
             self.include_combined_var = tk.BooleanVar(value=False)
             self.combined_chk = None
+            self.highlight_chk = None
+            self.highlight_colour_combo = None
             self.reset_btn = None
             self.export_btn = None
-            self.import_btn = None
+            self.manage_events_btn = None
             self._open_panels = []
             self._close_confirm_open = False
             self.help_btn = None
@@ -665,8 +667,8 @@ class FishingApp:
         self.reset_btn.pack(side=tk.LEFT, padx=3)
         self.export_btn = ttk.Button(btn_frame, text=L["export_event"], command=self.export_event)
         self.export_btn.pack(side=tk.LEFT, padx=3)
-        self.import_btn = ttk.Button(btn_frame, text=L["import_event"], command=self.import_event)
-        self.import_btn.pack(side=tk.LEFT, padx=3)
+        self.manage_events_btn = ttk.Button(btn_frame, text=L["events_btn"], command=self.open_manage_events_panel)
+        self.manage_events_btn.pack(side=tk.LEFT, padx=3)
         self.invoices_btn = ttk.Button(btn_frame, text=L["invoices_btn"], command=self.open_invoices_manager)
         self.invoices_btn.pack(side=tk.LEFT, padx=3)
         self.settings_btn = ttk.Button(btn_frame, text=L["settings_btn"], command=self.open_settings_dialog)
@@ -708,9 +710,10 @@ class FishingApp:
         self.highlight_var = tk.BooleanVar(value=self.data.get("report_highlight", True))
         def _on_highlight_toggle():
             self.data["report_highlight"] = self.highlight_var.get()
-        ttk.Checkbutton(settings_frame, text=L["report_highlight_label"],
+        self.highlight_chk = ttk.Checkbutton(settings_frame, text=L["report_highlight_label"],
                         variable=self.highlight_var,
-                        command=_on_highlight_toggle).pack(anchor="w", pady=2)
+                        command=_on_highlight_toggle)
+        self.highlight_chk.pack(anchor="w", pady=2)
         colour_row = ttk.Frame(settings_frame)
         colour_row.pack(anchor="w", pady=2, fill="x")
         ttk.Label(colour_row, text=f'{L["report_highlight_colour"]}:',
@@ -719,15 +722,16 @@ class FishingApp:
         colour_labels = {"green": L["col_green"], "yellow": L["col_yellow"],
                          "blue": L["col_blue"], "grey": L["col_grey"], "red": L["col_red"]}
         self._highlight_colour_label_to_key = {v: k for k, v in colour_labels.items()}
-        colour_combo = ttk.Combobox(colour_row, state="readonly", width=10,
+        self.highlight_colour_combo = ttk.Combobox(colour_row, state="readonly", width=10,
                                     values=list(colour_labels.values()),
                                     font=("Arial", self.font_size - 2))
-        colour_combo.set(colour_labels.get(self.highlight_colour_var.get(), L["col_green"]))
+        self.highlight_colour_combo.set(colour_labels.get(self.highlight_colour_var.get(), L["col_green"]))
         def _on_colour_pick(_e=None):
-            key = self._highlight_colour_label_to_key.get(colour_combo.get(), "green")
+            key = self._highlight_colour_label_to_key.get(self.highlight_colour_combo.get(), "green")
             self.data["report_highlight_colour"] = key
-        colour_combo.bind("<<ComboboxSelected>>", _on_colour_pick)
-        colour_combo.pack(side="left", padx=6)
+        self.highlight_colour_combo.bind("<<ComboboxSelected>>", _on_colour_pick)
+        self.highlight_colour_combo.pack(side="left", padx=6)
+        self._update_highlight_state()
 
         # -- Footer: version bottom-left, copyright centred --
         footer_frame = ttk.Frame(self.main_frame)
@@ -757,8 +761,7 @@ class FishingApp:
         self.create_tooltip(self.edit_catches_btn, L["tooltip_edit_catches"])
         self.create_tooltip(self.report_btn, L["tooltip_report"])
         self.create_tooltip(self.reset_btn, L["tooltip_reset"])
-        self.create_tooltip(self.export_btn, L["tooltip_export"])
-        self.create_tooltip(self.import_btn, L["tooltip_import"])
+        self.create_tooltip(self.manage_events_btn, L["tooltip_manage_events"])
         self.create_tooltip(self.invoices_btn, L["tooltip_invoices"])
         self.create_tooltip(self.settings_btn, L["tooltip_settings"])
         self.create_tooltip(self.help_btn, L["tooltip_help"])
@@ -1270,6 +1273,25 @@ class FishingApp:
         self.current_manche = display_to_key(self.lang, self.manche_var.get())
         self.refresh_manche_view()
         self._update_combined_state()
+        self._update_highlight_state()
+
+    def _update_highlight_state(self):
+        """Finalist highlighting applies to round reports only, not the final's
+        own report. On the Final, the checkbox and colour picker are unchecked
+        and disabled; on any round they are restored to the stored setting."""
+        chk = getattr(self, "highlight_chk", None)
+        combo = getattr(self, "highlight_colour_combo", None)
+        if chk is None or combo is None:
+            return
+        if self.current_manche == "final":
+            self.highlight_var.set(False)
+            chk.config(state="disabled")
+            combo.config(state="disabled")
+        else:
+            chk.config(state="normal")
+            combo.config(state="readonly")
+            # Restore the stored preference when leaving the final.
+            self.highlight_var.set(self.data.get("report_highlight", True))
 
     def _update_combined_state(self):
         """Combined ranking is only meaningful on the Final."""
@@ -2707,6 +2729,76 @@ class FishingApp:
                 return False
         return True
 
+    # ---- Branding assets (Group E) ------------------------------------
+    # Canonical filenames the app reads elsewhere; max upload size; and the
+    # standard fitted output size for each (so varied source dimensions all
+    # render consistently).
+    ASSET_MAX_BYTES = 5 * 1024 * 1024  # 5 MB per image
+    ASSET_SPECS = {
+        # which: (canonical_path, fit_box, kind)
+        "logo":      ("logo.png", (400, 400), "png"),
+        "watermark": ("watermark.png", (1000, 1000), "png"),
+        "icon":      ("logo.ico", (256, 256), "ico"),
+    }
+
+    def _asset_present(self, which):
+        path = self.ASSET_SPECS[which][0]
+        return os.path.exists(path)
+
+    def _import_asset(self, which, src_path):
+        """Validate + normalise + save a branding image to its canonical file.
+        Returns True on success; shows a clear message and returns False on any
+        problem (bad type, too large, unreadable)."""
+        L = LANGUAGES[self.lang]
+        canonical, fit_box, kind = self.ASSET_SPECS[which]
+        ext = os.path.splitext(src_path)[1].lower()
+        if ext not in (".png", ".jpg", ".jpeg"):
+            messagebox.showerror("Error", L["asset_bad_type"])
+            return False
+        try:
+            size = os.path.getsize(src_path)
+        except OSError as e:
+            messagebox.showerror("Error", L["asset_load_failed"].format(err=str(e)))
+            return False
+        if size > self.ASSET_MAX_BYTES:
+            messagebox.showerror("Error", L["asset_too_big"].format(
+                size=self._human_size(size), max=self._human_size(self.ASSET_MAX_BYTES)))
+            return False
+        try:
+            from PIL import Image as PILImage
+            img = PILImage.open(src_path)
+            img.load()
+            # Fit within the standard box, preserving aspect ratio. Keep
+            # transparency for PNG/ICO; flatten onto white for opaque sources.
+            if kind == "ico":
+                img = img.convert("RGBA")
+                img.thumbnail(fit_box, PILImage.LANCZOS)
+                img.save(canonical, format="ICO",
+                         sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)])
+            else:
+                if img.mode in ("RGBA", "LA", "P"):
+                    img = img.convert("RGBA")
+                else:
+                    img = img.convert("RGB")
+                img.thumbnail(fit_box, PILImage.LANCZOS)
+                img.save(canonical, format="PNG")
+        except Exception as e:
+            logging.error(f"import asset {which} failed: {e}")
+            messagebox.showerror("Error", L["asset_load_failed"].format(err=str(e)))
+            return False
+        return True
+
+    def _remove_asset(self, which):
+        canonical = self.ASSET_SPECS[which][0]
+        try:
+            if os.path.exists(canonical):
+                os.remove(canonical)
+            return True
+        except OSError as e:
+            logging.error(f"remove asset {which} failed: {e}")
+            messagebox.showerror("Error", str(e))
+            return False
+
     def open_settings_dialog(self):
         if self._raise_open_panel():
             return
@@ -2717,6 +2809,8 @@ class FishingApp:
         dlg.update_idletasks()  # macOS: ensure window is mapped before grabbing
         dlg.grab_set()
         dlg.geometry("640x680")
+        dlg.minsize(560, 480)
+        dlg.resizable(True, True)
         self._register_panel(dlg)
 
         outer = ttk.Frame(dlg, padding=12)
@@ -2728,12 +2822,35 @@ class FishingApp:
         canvas = tk.Canvas(outer, borderwidth=0, highlightthickness=0)
         scroll = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
         body = ttk.Frame(canvas)
-        body.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=body, anchor="nw")
+        body_id = canvas.create_window((0, 0), window=body, anchor="nw")
+
+        def _sync_scroll(_e=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        body.bind("<Configure>", _sync_scroll)
+        # Make the inner frame track the canvas width (so rows fill it and the
+        # scrollregion height is computed correctly).
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(body_id, width=e.width))
         canvas.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
         canvas.pack(side="left", fill="both", expand=True)
         body.columnconfigure(1, weight=1)
+
+        # Mouse-wheel scrolling (Windows/macOS use <MouseWheel>; Linux uses
+        # Button-4/5). Bound only while the pointer is over this canvas.
+        def _on_wheel(e):
+            delta = -1 if (getattr(e, "delta", 0) > 0 or getattr(e, "num", 0) == 4) else 1
+            canvas.yview_scroll(delta, "units")
+        def _wheel_on(_e):
+            canvas.bind_all("<MouseWheel>", _on_wheel)
+            canvas.bind_all("<Button-4>", _on_wheel)
+            canvas.bind_all("<Button-5>", _on_wheel)
+        def _wheel_off(_e):
+            canvas.unbind_all("<MouseWheel>")
+            canvas.unbind_all("<Button-4>")
+            canvas.unbind_all("<Button-5>")
+        canvas.bind("<Enter>", _wheel_on)
+        canvas.bind("<Leave>", _wheel_off)
+        dlg.bind("<Destroy>", lambda e: _wheel_off(e) if e.widget is dlg else None, add="+")
 
         entries = {}
 
@@ -2778,6 +2895,57 @@ class FishingApp:
         ]:
             add_row(sec2, k, L[lk])
 
+        # -- Branding & icons (Group E) --
+        sec3 = ttk.LabelFrame(body, text=L["settings_assets_section"], padding=8)
+        sec3.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        sec3.columnconfigure(1, weight=1)
+        ttk.Label(sec3, text=L["asset_note"].format(max=self._human_size(self.ASSET_MAX_BYTES)),
+                  font=("Arial", self.font_size - 3), foreground="#555").grid(
+                      row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
+        status_labels = {}
+
+        def refresh_status(which):
+            present = self._asset_present(which)
+            status_labels[which].config(
+                text=L["asset_present"] if present else L["asset_absent"],
+                foreground="#2e7d32" if present else "#999")
+
+        def make_asset_row(r, which, label_key):
+            ttk.Label(sec3, text=L[label_key], font=("Arial", self.font_size)).grid(
+                row=r, column=0, sticky="w", pady=3, padx=(0, 8))
+            st = ttk.Label(sec3, font=("Arial", self.font_size - 2))
+            st.grid(row=r, column=1, sticky="w")
+            status_labels[which] = st
+            bf = ttk.Frame(sec3)
+            bf.grid(row=r, column=2, sticky="e")
+
+            def upload():
+                src = filedialog.askopenfilename(
+                    title=L["asset_upload"],
+                    filetypes=[("Images", "*.png *.jpg *.jpeg"), ("PNG", "*.png"),
+                               ("JPEG", "*.jpg *.jpeg")])
+                if not src:
+                    return
+                if self._import_asset(which, src):
+                    refresh_status(which)
+                    messagebox.showinfo("", L["asset_saved"].format(which=L[label_key]))
+
+            def remove():
+                if not self._asset_present(which):
+                    return
+                if messagebox.askyesno("", L["asset_remove_q"].format(which=L[label_key])):
+                    if self._remove_asset(which):
+                        refresh_status(which)
+                        messagebox.showinfo("", L["asset_removed"].format(which=L[label_key]))
+
+            ttk.Button(bf, text=L["asset_upload"], command=upload).pack(side="left", padx=2)
+            ttk.Button(bf, text=L["asset_remove"], command=remove).pack(side="left", padx=2)
+            refresh_status(which)
+
+        make_asset_row(1, "logo", "asset_logo")
+        make_asset_row(2, "watermark", "asset_watermark")
+        make_asset_row(3, "icon", "asset_icon")
+
         def do_save():
             new_cfg = dict(CONFIG)
             for k, e in entries.items():
@@ -2819,6 +2987,10 @@ class FishingApp:
 
         ttk.Button(btn_bar, text=L["settings_save"], command=do_save).pack(side="left", padx=4)
         ttk.Button(btn_bar, text=L["close"], command=dlg.destroy).pack(side="right", padx=4)
+        # Ensure the scrollable region reflects the fully-built content so the
+        # last section (branding assets) is reachable on macOS.
+        dlg.update_idletasks()
+        canvas.configure(scrollregion=canvas.bbox("all"))
         dlg.wait_window()
 
     # Light, print-friendly highlight tones - dark text stays readable on all.
@@ -3258,8 +3430,10 @@ class FishingApp:
             messagebox.showinfo(LANGUAGES[self.lang]["saved"], LANGUAGES[self.lang]["reset_success"])
 
     def export_event(self):
-        # Sync the live event fields, then block export if mandatory fields
-        # (name, location) are missing. Date always has a value.
+        # Export the CURRENT (open) event - a manual save/checkpoint available
+        # any time the mandatory fields pass validation. Acts on self.data, not
+        # on a list selection. Saves to the canonical event folder by default,
+        # but the operator may choose any location for a portable copy.
         if hasattr(self, "event_name"):
             self.data.setdefault("event", {})
             self.data["event"]["name"] = self.event_name.get().strip()
@@ -3269,22 +3443,39 @@ class FishingApp:
         if not ev.get("name") or not ev.get("location"):
             messagebox.showerror("Error", LANGUAGES[self.lang]["export_blocked_fields"])
             return
-        event = self.data["event"]
-        folder_name = get_event_folder(event)
-        filename = os.path.join(folder_name, f"{folder_name}.json")
-
+        folder_name = get_event_folder(ev)
         try:
             os.makedirs(folder_name, exist_ok=True)
         except PermissionError:
             messagebox.showerror("Error", LANGUAGES[self.lang]["permission_error"].replace("[folder]", folder_name))
             return
-
+        # Always keep the canonical copy current (this is the "save now" the
+        # operator wants), then offer to place a portable copy anywhere.
+        canonical = os.path.join(folder_name, f"{folder_name}.json")
         try:
-            with open(filename, 'w', encoding='utf-8') as file:
+            with open(canonical, 'w', encoding='utf-8') as file:
                 json.dump(self.data, file, indent=4, ensure_ascii=False)
-            messagebox.showinfo(LANGUAGES[self.lang]["saved"], LANGUAGES[self.lang]["export_success"].format(filename=filename))
         except Exception as e:
-            logging.error(f"export_event failed: {str(e)}")
+            logging.error(f"export_event canonical save failed: {str(e)}")
+            messagebox.showerror("Error", f"Export failed: {str(e)}")
+            return
+        dest = filedialog.asksaveasfilename(
+            title=LANGUAGES[self.lang]["export_event"],
+            defaultextension=".json",
+            initialfile=f"{folder_name}.json",
+            filetypes=[("JSON files", "*.json")])
+        if not dest or os.path.abspath(dest) == os.path.abspath(canonical):
+            # Cancelled, or chose the canonical path itself - already saved.
+            messagebox.showinfo(LANGUAGES[self.lang]["saved"],
+                                LANGUAGES[self.lang]["export_success"].format(filename=os.path.abspath(canonical)))
+            return
+        try:
+            with open(dest, 'w', encoding='utf-8') as file:
+                json.dump(self.data, file, indent=4, ensure_ascii=False)
+            messagebox.showinfo(LANGUAGES[self.lang]["saved"],
+                                LANGUAGES[self.lang]["export_success"].format(filename=os.path.abspath(dest)))
+        except Exception as e:
+            logging.error(f"export_event copy failed: {str(e)}")
             messagebox.showerror("Error", f"Export failed: {str(e)}")
 
     def _scan_local_events(self):
@@ -3318,14 +3509,187 @@ class FishingApp:
                         date_sort = datetime.strptime(date, "%d/%m/%Y")
                     except ValueError:
                         date_sort = datetime.min
-                    events.append({"path": data_file, "name": name,
-                                   "date": date, "date_sort": date_sort})
+                    invoices = d.get("invoices", []) if isinstance(d, dict) else []
+                    inv_count = len(invoices) if isinstance(invoices, list) else 0
+                    # Folder size + file count (recursive).
+                    total_bytes, file_count = 0, 0
+                    for root, _dirs, files in os.walk(folder):
+                        for f in files:
+                            file_count += 1
+                            try:
+                                total_bytes += os.path.getsize(os.path.join(root, f))
+                            except OSError:
+                                pass
+                    events.append({"path": data_file, "folder": folder, "name": name,
+                                   "date": date, "date_sort": date_sort,
+                                   "invoices": inv_count, "bytes": total_bytes,
+                                   "files": file_count})
                 except Exception as e:
                     logging.error(f"scan event {data_file} failed: {e}")
         except Exception as e:
             logging.error(f"_scan_local_events failed: {e}")
         events.sort(key=lambda e: e["date_sort"], reverse=True)
         return events
+
+    def _human_size(self, n):
+        size = float(n)
+        for unit in ("B", "KB", "MB", "GB"):
+            if size < 1024 or unit == "GB":
+                return f"{int(size)} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+            size /= 1024
+        return f"{size:.1f} GB"
+
+    def _prompt_text(self, parent, title, message):
+        """Small modal asking for a line of text. Returns the string or None."""
+        L = LANGUAGES[self.lang]
+        top = Toplevel(parent)
+        top.title(title)
+        top.transient(parent)
+        top.update_idletasks()
+        top.grab_set()
+        top.geometry("440x180")
+        frame = ttk.Frame(top, padding=12)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text=message, wraplength=400, justify="left").pack(anchor="w", pady=(0, 8))
+        var = tk.StringVar()
+        entry = ttk.Entry(frame, textvariable=var, font=("Arial", self.font_size), width=36)
+        entry.pack(fill="x")
+        entry.focus_set()
+        result = {"value": None}
+        def ok():
+            result["value"] = var.get()
+            top.destroy()
+        btns = ttk.Frame(frame)
+        btns.pack(fill="x", pady=(10, 0))
+        ttk.Button(btns, text="OK", command=ok).pack(side="right", padx=4)
+        ttk.Button(btns, text=L["cancel"], command=top.destroy).pack(side="right", padx=4)
+        top.bind("<Return>", lambda e: ok())
+        top.wait_window()
+        return result["value"]
+
+    def open_manage_events_panel(self):
+        if self._raise_open_panel():
+            return
+        L = LANGUAGES[self.lang]
+        # Flush the current event to its folder first, so it appears in the
+        # list and can be exported. Quiet (no dialogs); only if it has the
+        # mandatory fields. This is the same write the app does on auto-save.
+        try:
+            ev = self.data.get("event", {})
+            if ev.get("name") and ev.get("location"):
+                folder = get_event_folder(ev)
+                os.makedirs(folder, exist_ok=True)
+                with open(os.path.join(folder, f"{folder}.json"), "w", encoding="utf-8") as fh:
+                    json.dump(self.data, fh, indent=4, ensure_ascii=False)
+        except Exception as e:
+            logging.error(f"flush current event before manage panel failed: {e}")
+
+        win = Toplevel(self.root)
+        win.title(L["manage_events_title"])
+        win.transient(self.root)
+        win.update_idletasks()
+        win.grab_set()
+        win.geometry("720x440")
+        self._register_panel(win)
+
+        outer = ttk.Frame(win, padding=10)
+        outer.pack(fill="both", expand=True)
+        btns = ttk.Frame(outer)
+        btns.pack(side="bottom", fill="x", pady=(8, 0))
+
+        cols = ("date", "title", "invoices", "size")
+        tv = ttk.Treeview(outer, columns=cols, show="headings", height=13)
+        tv.heading("date", text=L["events_col_date"])
+        tv.heading("title", text=L["events_col_title"])
+        tv.heading("invoices", text=L["events_col_invoices"])
+        tv.heading("size", text=L["events_col_size"])
+        tv.column("date", width=90, anchor="center")
+        tv.column("title", width=380, anchor="w")
+        tv.column("invoices", width=80, anchor="center")
+        tv.column("size", width=90, anchor="e")
+        sb = ttk.Scrollbar(outer, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        tv.pack(side="top", fill="both", expand=True)
+
+        state = {"events": []}
+
+        def reload_list():
+            state["events"] = self._scan_local_events()
+            tv.delete(*tv.get_children())
+            if state["events"]:
+                for idx, ev in enumerate(state["events"]):
+                    tv.insert("", "end", iid=str(idx),
+                              values=(ev["date"], ev["name"], ev["invoices"],
+                                      self._human_size(ev["bytes"])))
+            else:
+                tv.insert("", "end", values=("", L["events_no_events"], "", ""))
+
+        def selected():
+            sel = tv.selection()
+            if not sel:
+                messagebox.showinfo(L["manage_events_title"], L["events_select_row"])
+                return None
+            try:
+                return state["events"][int(sel[0])]
+            except (ValueError, IndexError):
+                return None
+
+        def open_selected(_evt=None):
+            ev = selected()
+            if not ev:
+                return
+            win.destroy()
+            try:
+                self._load_event_file(ev["path"])
+            except Exception as e:
+                logging.error(f"manage_events open failed: {e}")
+                messagebox.showerror(L["error"], str(e))
+
+        def browse():
+            win.destroy()
+            self._browse_import()
+
+        def delete_selected():
+            ev = selected()
+            if not ev:
+                return
+            # Never delete the event currently open in the app.
+            cur = self.data.get("event", {})
+            if cur.get("name"):
+                cur_folder = get_event_folder(cur)
+                if os.path.basename(ev["folder"]) == cur_folder:
+                    messagebox.showwarning(L["manage_events_title"], L["events_del_current_blocked"])
+                    return
+            # Step 1: named confirmation listing what will be removed.
+            if not messagebox.askyesno("", L["events_del_confirm1"].format(
+                    name=ev["name"], date=ev["date"], files=ev["files"], inv=ev["invoices"])):
+                return
+            # Step 2: if invoices exist (financial records), require typing the name.
+            if ev["invoices"] > 0:
+                typed = self._prompt_text(win, L["events_delete"],
+                                          L["events_del_confirm2_invoices"].format(inv=ev["invoices"]))
+                if typed is None:
+                    return
+                if typed.strip() != ev["name"]:
+                    messagebox.showinfo(L["events_delete"], L["events_del_name_mismatch"])
+                    return
+            try:
+                import shutil
+                shutil.rmtree(ev["folder"])
+                messagebox.showinfo(L["manage_events_title"], L["events_del_done"].format(name=ev["name"]))
+                reload_list()
+            except Exception as e:
+                logging.error(f"delete event failed: {e}")
+                messagebox.showerror(L["error"], str(e))
+
+        tv.bind("<Double-1>", open_selected)
+        ttk.Button(btns, text=L["events_open"], command=open_selected).pack(side="left", padx=3)
+        ttk.Button(btns, text=L["events_delete"], command=delete_selected).pack(side="left", padx=3)
+        ttk.Button(btns, text=L["events_browse"], command=browse).pack(side="left", padx=3)
+        ttk.Button(btns, text=L["cancel"], command=win.destroy).pack(side="right", padx=3)
+
+        reload_list()
 
     def _load_event_file(self, file_path):
         """Validate and load an event JSON file into the app."""
@@ -3353,69 +3717,6 @@ class FishingApp:
             messagebox.showerror(LANGUAGES[self.lang]["error"],
                                  f"Failed to import event: {str(e)}")
             return False
-
-    def import_event(self):
-        if self._raise_open_panel():
-            return
-        L = LANGUAGES[self.lang]
-        events = self._scan_local_events()
-
-        win = Toplevel(self.root)
-        win.title(L["import_select_title"])
-        win.transient(self.root)
-        win.update_idletasks()
-        win.grab_set()
-        win.geometry("620x420")
-        self._register_panel(win)
-
-        outer = ttk.Frame(win, padding=10)
-        outer.pack(fill="both", expand=True)
-        btns = ttk.Frame(outer)
-        btns.pack(side="bottom", fill="x", pady=(8, 0))
-
-        cols = ("date", "title")
-        tv = ttk.Treeview(outer, columns=cols, show="headings", height=14)
-        tv.heading("date", text=L["import_col_date"])
-        tv.heading("title", text=L["import_col_title"])
-        tv.column("date", width=110, anchor="center")
-        tv.column("title", width=440, anchor="w")
-        sb = ttk.Scrollbar(outer, orient="vertical", command=tv.yview)
-        tv.configure(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        tv.pack(side="top", fill="both", expand=True)
-
-        if events:
-            for idx, ev in enumerate(events):
-                tv.insert("", "end", iid=str(idx), values=(ev["date"], ev["name"]))
-        else:
-            tv.insert("", "end", values=("", L["import_no_events"]))
-
-        def open_selected(_evt=None):
-            sel = tv.selection()
-            if not sel:
-                messagebox.showinfo(L["import_select_title"], L["import_select_row"])
-                return
-            try:
-                idx = int(sel[0])
-            except ValueError:
-                return  # the "no events" placeholder row
-            path = events[idx]["path"]
-            win.destroy()
-            try:
-                self._load_event_file(path)
-            except Exception as e:
-                logging.error(f"import_event open failed: {str(e)}")
-                messagebox.showerror(L["error"], f"Failed to import event: {str(e)}")
-
-        def browse():
-            win.destroy()
-            self._browse_import()
-
-        tv.bind("<Double-1>", open_selected)
-        ttk.Button(btns, text=L["import_open"], command=open_selected).pack(side="left", padx=3)
-        ttk.Button(btns, text=L["import_browse"], command=browse).pack(side="left", padx=3)
-        ttk.Button(btns, text=L["cancel"], command=win.destroy).pack(side="right", padx=3)
-        win.bind("<Return>", open_selected)
 
     def open_date_picker(self, parent, initial_str=None):
         """Modal dialog with an inline tkcalendar Calendar. Returns the chosen
