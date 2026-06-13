@@ -10,7 +10,7 @@ operated by non-technical users during a live event.
 
 - **Languages:** English, French, German, Luxembourgish (invoices are French)
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 3.5
+- **Version:** 3.6
 - **License:** MIT
 
 ---
@@ -81,7 +81,7 @@ Linux you may need `sudo apt install python3-tk`.
 ## Building the executables
 
 Builds are produced automatically by GitHub Actions
-(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.5`
+(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.6`
 builds the Windows `.exe` and macOS `.app` and drafts a release with both
 attached. The workflow bundles `config.json` and `help.json` already; if you
 keep `watermark.png` and `logo.icns` in the repo, add them to the workflow's
@@ -138,6 +138,22 @@ Output naming:
 ---
 
 ## Changelog
+
+### v3.6
+- Event configuration added (foundation of the new competition rules):
+  number of rounds, max participants per round (default 30), and how many
+  proceed to the final per round / "Xproc" (default 10). All are validated
+  as whole numbers. Number of rounds is shown but fixed at 3 for now -
+  making the round count variable is a separate structural change.
+- Freeze-on-configure: opening Manage Participants now locks the event AND
+  its configuration behind an acknowledged, cancellable confirmation. A
+  separate notice appears (and must be acknowledged) if rounds x Xproc
+  exceeds max participants per round.
+- Roster enforcement: a round cannot exceed its max participants; adding
+  past the limit warns and fills only the remaining room.
+- Export is blocked unless the event has a name and location (date always
+  defaults to today). Closing the app still just closes without saving an
+  empty event.
 
 ### v3.5
 - Import Event now opens a panel listing every event found in the

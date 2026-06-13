@@ -23,7 +23,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "3.5"
+APP_VERSION = "3.6"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -165,7 +165,10 @@ def new_event_data(lang="English"):
         "event": {}, "participants": {}, "sessions": empty_sessions(),
         "invoices": [], "invoice_seq_start": None, "invoice_next": None,
         "invoice_unit_price": None,
-        "track_details": False, "lang": lang, "version": APP_VERSION,
+        "track_details": False,
+        "config": {"num_rounds": 3, "max_per_round": 30, "xproc": 10},
+        "config_locked": False,
+        "lang": lang, "version": APP_VERSION,
     }
 
 
@@ -234,6 +237,11 @@ def migrate_data(data):
     data.setdefault("invoice_seq_start", None)
     data.setdefault("invoice_next", None)
     data.setdefault("invoice_unit_price", None)
+    cfg = data.setdefault("config", {})
+    cfg.setdefault("num_rounds", 3)
+    cfg.setdefault("max_per_round", 30)
+    cfg.setdefault("xproc", 10)
+    data.setdefault("config_locked", False)
     data.setdefault("lang", "English")
     data["version"] = APP_VERSION
     return data
@@ -441,6 +449,38 @@ class FishingApp:
             return False
         return True
 
+    def _read_config_fields(self):
+        """Validate and return the event config from the entry widgets.
+
+        Returns a dict {num_rounds, max_per_round, xproc} or None if a field
+        is invalid (an error is shown). When fields are locked/absent, falls
+        back to the stored config.
+        """
+        L = LANGUAGES[self.lang]
+        stored = self.data.get("config", {"num_rounds": 3, "max_per_round": 30, "xproc": 10})
+
+        def read(widget, key, label, minimum):
+            if widget is None:
+                return stored.get(key)
+            raw = widget.get().strip()
+            try:
+                val = int(raw)
+                if val < minimum:
+                    raise ValueError
+                return val
+            except ValueError:
+                messagebox.showerror("Error", L["cfg_invalid_int"].format(field=label, min=minimum))
+                return None
+
+        num_rounds = stored.get("num_rounds", 3)  # fixed at 3 for now
+        max_per_round = read(getattr(self, "cfg_max_per_round", None), "max_per_round", L["cfg_max_per_round"], 1)
+        if max_per_round is None:
+            return None
+        xproc = read(getattr(self, "cfg_xproc", None), "xproc", L["cfg_xproc"], 1)
+        if xproc is None:
+            return None
+        return {"num_rounds": num_rounds, "max_per_round": max_per_round, "xproc": xproc}
+
     def build_main_ui(self):
         L = LANGUAGES[self.lang]
         for widget in self.main_frame.winfo_children():
@@ -479,15 +519,39 @@ class FishingApp:
         self.manche_combo.set(key_to_display(self.lang, self.current_manche))
         self.manche_combo.bind("<<ComboboxSelected>>", self.on_manche_changed)
 
+        # -- Event configuration (Group A) --------------------------------
+        cfg = self.data.get("config", {})
+        vint = (self.root.register(self.validate_number), "%P")
+        ttk.Label(event_frame, text=L["cfg_num_rounds"], font=("Arial", self.font_size)).grid(row=4, column=0, pady=3, sticky="w")
+        self.cfg_num_rounds = ttk.Entry(event_frame, font=("Arial", self.font_size), width=6,
+                                        validate="key", validatecommand=vint)
+        self.cfg_num_rounds.grid(row=4, column=1, pady=3, sticky="w")
+        self.cfg_num_rounds.insert(0, str(cfg.get("num_rounds", 3)))
+        ttk.Label(event_frame, text=L["cfg_max_per_round"], font=("Arial", self.font_size)).grid(row=5, column=0, pady=3, sticky="w")
+        self.cfg_max_per_round = ttk.Entry(event_frame, font=("Arial", self.font_size), width=6,
+                                           validate="key", validatecommand=vint)
+        self.cfg_max_per_round.grid(row=5, column=1, pady=3, sticky="w")
+        self.cfg_max_per_round.insert(0, str(cfg.get("max_per_round", 30)))
+        ttk.Label(event_frame, text=L["cfg_xproc"], font=("Arial", self.font_size)).grid(row=6, column=0, pady=3, sticky="w")
+        self.cfg_xproc = ttk.Entry(event_frame, font=("Arial", self.font_size), width=6,
+                                   validate="key", validatecommand=vint)
+        self.cfg_xproc.grid(row=6, column=1, pady=3, sticky="w")
+        self.cfg_xproc.insert(0, str(cfg.get("xproc", 10)))
+        # num_rounds stays at 3 for now: changing the round COUNT is a separate
+        # structural change (SESSION_KEYS, rankings, reports, invoicing). The
+        # field is shown read-only so the value is visible and stored, but not
+        # yet user-editable away from 3.
+        self.cfg_num_rounds.config(state="disabled")
+
         # Event-level toggle: record fish length & type.
         self.track_details_var = tk.BooleanVar(value=self.data.get("track_details", False))
         self.track_chk = ttk.Checkbutton(
             event_frame, text=L["enable_details"], variable=self.track_details_var,
             command=self.on_track_details_toggled)
-        self.track_chk.grid(row=4, column=0, columnspan=2, pady=(4, 2), sticky="w")
+        self.track_chk.grid(row=7, column=0, columnspan=2, pady=(4, 2), sticky="w")
 
         self.manage_btn = ttk.Button(event_frame, text=L["manage_participants"], command=self.open_participants_manager)
-        self.manage_btn.grid(row=5, column=0, columnspan=2, pady=(6, 2), sticky="ew")
+        self.manage_btn.grid(row=8, column=0, columnspan=2, pady=(6, 2), sticky="ew")
 
         event_locked = bool(self.data["event"])
         if event_locked:
@@ -503,6 +567,8 @@ class FishingApp:
             self.date.config(state="disabled")
             # Length/type policy is fixed once the event is locked.
             self.track_chk.config(state="disabled")
+            self.cfg_max_per_round.config(state="disabled")
+            self.cfg_xproc.config(state="disabled")
 
         # -- Log catch --
         catch_frame = ttk.LabelFrame(left_frame, text=L["log_catch"], padding=5)
@@ -939,6 +1005,14 @@ class FishingApp:
             self.event_name.config(state="disabled")
             self.location.config(state="disabled")
             self.date.config(state="disabled")
+            for w in (getattr(self, "cfg_max_per_round", None),
+                      getattr(self, "cfg_xproc", None),
+                      getattr(self, "track_chk", None)):
+                if w is not None:
+                    try:
+                        w.config(state="disabled")
+                    except tk.TclError:
+                        pass
         try:
             save_data(self.data, self.data["event"])
         except Exception as e:
@@ -1125,6 +1199,25 @@ class FishingApp:
     def open_participants_manager(self):
         if self._raise_open_panel():
             return
+        L = LANGUAGES[self.lang]
+        # If the event/config is not yet locked, run the freeze gate first.
+        if not self.data.get("config_locked", False):
+            if not self.check_event_details():
+                return
+            cfg = self._read_config_fields()
+            if cfg is None:
+                return
+            total = cfg["num_rounds"] * cfg["xproc"]
+            if total > cfg["max_per_round"]:
+                if not messagebox.askyesno("", L["cfg_xproc_exceeds"].format(
+                        total=total, maxp=cfg["max_per_round"])):
+                    return
+            if not messagebox.askokcancel("", L["cfg_freeze_q"]):
+                return
+            self.data["config"] = cfg
+            self.data["config_locked"] = True
+            # Persist the (now frozen) event + config and lock the widgets.
+            self.update_event()
         if not self.check_event_details():
             return
         self.update_event()  # lock event details once we touch the roster
@@ -1240,10 +1333,19 @@ class FishingApp:
             if not sel:
                 return
             sess = self.data["sessions"][self.current_manche]
+            # Group B: enforce the configured max participants per round.
+            max_per = self.data.get("config", {}).get("max_per_round", 30)
+            current = len(sess["participants"])
+            to_add = [n for n in sel if n not in sess["participants"]]
+            if current + len(to_add) > max_per:
+                room = max(max_per - current, 0)
+                messagebox.showwarning("", L["cfg_round_full"].format(
+                    maxp=max_per, room=room))
+                if room == 0:
+                    return
+                to_add = to_add[:room]
             added = False
-            for name in sel:
-                if name in sess["participants"]:
-                    continue
+            for name in to_add:
                 sess["participants"].append(name)
                 sess["catches"].setdefault(name, [])
                 added = True
@@ -2910,6 +3012,17 @@ class FishingApp:
             messagebox.showinfo(LANGUAGES[self.lang]["saved"], LANGUAGES[self.lang]["reset_success"])
 
     def export_event(self):
+        # Sync the live event fields, then block export if mandatory fields
+        # (name, location) are missing. Date always has a value.
+        if hasattr(self, "event_name"):
+            self.data.setdefault("event", {})
+            self.data["event"]["name"] = self.event_name.get().strip()
+            self.data["event"]["location"] = self.location.get().strip()
+            self.data["event"]["date"] = self.date.get()
+        ev = self.data.get("event", {})
+        if not ev.get("name") or not ev.get("location"):
+            messagebox.showerror("Error", LANGUAGES[self.lang]["export_blocked_fields"])
+            return
         event = self.data["event"]
         folder_name = get_event_folder(event)
         filename = os.path.join(folder_name, f"{folder_name}.json")

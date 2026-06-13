@@ -199,7 +199,16 @@
     "import_browse": "Browse...",
     "import_open": "Open",
     "import_no_events": "No events found in the application folder.",
-    "import_select_row": "Please select an event to open, or use Browse."
+    "import_select_row": "Please select an event to open, or use Browse.",
+    "cfg_max_per_round": "Max participants / round",
+    "cfg_xproc": "Proceed to final / round",
+    "cfg_num_rounds": "Number of rounds",
+    "cfg_invalid_int": "{field}: please enter a whole number of at least {min}.",
+    "cfg_freeze_q": "Event setup will now be locked: event details and configuration (rounds, max per round, proceed-to-final) cannot be changed afterwards. Proceed?",
+    "cfg_freeze_proceed": "Lock and continue",
+    "cfg_xproc_exceeds": "Note: rounds x proceed-to-final ({total}) exceeds max participants per round ({maxp}). That is allowed, but more qualifiers than a round can hold may be produced. Continue?",
+    "export_blocked_fields": "Event name and location are required before exporting.",
+    "cfg_round_full": "Round limit: max {maxp} participants per round. Room for {room} more."
   },
   "French": {
     "title": "Registre de Concours de Pêche Fëscherfrënn Stengefort",
@@ -401,7 +410,16 @@
     "import_browse": "Parcourir...",
     "import_open": "Ouvrir",
     "import_no_events": "Aucun concours trouvé dans le dossier de l'application.",
-    "import_select_row": "Veuillez sélectionner un concours à ouvrir, ou utilisez Parcourir."
+    "import_select_row": "Veuillez sélectionner un concours à ouvrir, ou utilisez Parcourir.",
+    "cfg_max_per_round": "Participants max / manche",
+    "cfg_xproc": "Qualifiés pour la finale / manche",
+    "cfg_num_rounds": "Nombre de manches",
+    "cfg_invalid_int": "{field} : veuillez saisir un nombre entier d'au moins {min}.",
+    "cfg_freeze_q": "La configuration du concours va être verrouillée : les détails et la configuration (manches, max par manche, qualifiés) ne pourront plus être modifiés. Continuer ?",
+    "cfg_freeze_proceed": "Verrouiller et continuer",
+    "cfg_xproc_exceeds": "Note : manches x qualifiés ({total}) dépasse le nombre max de participants par manche ({maxp}). C'est autorisé, mais cela peut produire plus de qualifiés qu'une manche ne peut en contenir. Continuer ?",
+    "export_blocked_fields": "Le nom et le lieu du concours sont requis avant l'exportation.",
+    "cfg_round_full": "Limite de manche : max {maxp} participants par manche. Place pour {room} de plus."
   },
   "German": {
     "title": "Fëscherfrënn Stengefort Angelwettbewerb Register",
@@ -603,7 +621,16 @@
     "import_browse": "Durchsuchen...",
     "import_open": "Öffnen",
     "import_no_events": "Keine Veranstaltungen im Anwendungsordner gefunden.",
-    "import_select_row": "Bitte eine Veranstaltung zum Öffnen wählen oder Durchsuchen verwenden."
+    "import_select_row": "Bitte eine Veranstaltung zum Öffnen wählen oder Durchsuchen verwenden.",
+    "cfg_max_per_round": "Max. Teilnehmer / Runde",
+    "cfg_xproc": "Finaleinzug / Runde",
+    "cfg_num_rounds": "Anzahl der Runden",
+    "cfg_invalid_int": "{field}: bitte eine ganze Zahl von mindestens {min} eingeben.",
+    "cfg_freeze_q": "Die Einrichtung wird jetzt gesperrt: Veranstaltungsdetails und Konfiguration (Runden, Max pro Runde, Finaleinzug) können danach nicht mehr geändert werden. Fortfahren?",
+    "cfg_freeze_proceed": "Sperren und fortfahren",
+    "cfg_xproc_exceeds": "Hinweis: Runden x Finaleinzug ({total}) übersteigt die max. Teilnehmerzahl pro Runde ({maxp}). Das ist erlaubt, kann aber mehr Qualifizierte ergeben, als eine Runde fasst. Fortfahren?",
+    "export_blocked_fields": "Name und Ort der Veranstaltung sind vor dem Export erforderlich.",
+    "cfg_round_full": "Rundenlimit: max. {maxp} Teilnehmer pro Runde. Platz für {room} weitere."
   },
   "Luxembourgish": {
     "title": "Fëscherfrënn Stengefort Fëschkonkurrenz Register",
@@ -805,6 +832,15 @@
     "import_browse": "Duerchsichen...",
     "import_open": "Opmaachen",
     "import_no_events": "Keng Evenementer am Applikatiounsdossier fonnt.",
-    "import_select_row": "Wielt w.e.g. en Evenement fir opzemaachen, oder benotzt Duerchsichen."
+    "import_select_row": "Wielt w.e.g. en Evenement fir opzemaachen, oder benotzt Duerchsichen.",
+    "cfg_max_per_round": "Max. Participanten / Manche",
+    "cfg_xproc": "An d'Finale / Manche",
+    "cfg_num_rounds": "Unzuel Manchen",
+    "cfg_invalid_int": "{field}: gitt w.e.g. eng ganz Zuel vu mindestens {min} an.",
+    "cfg_freeze_q": "D'Astellung gëtt elo gespaart: Evenementsdetailer a Konfiguratioun (Manchen, Max pro Manche, Finaleinzuch) kënnen duerno net méi geännert ginn. Virufueren?",
+    "cfg_freeze_proceed": "Spären a virufueren",
+    "cfg_xproc_exceeds": "Notiz: Manchen x Finaleinzuch ({total}) iwwerschreit d'max. Unzuel Participanten pro Manche ({maxp}). Dat ass erlaabt, awer ka méi Qualifizéierter ergi wéi eng Manche faasst. Virufueren?",
+    "export_blocked_fields": "Numm a Plaz vum Evenement si virum Export néideg.",
+    "cfg_round_full": "Manche-Limit: max {maxp} Participanten pro Manche. Plaz fir {room} méi."
   }
 }
