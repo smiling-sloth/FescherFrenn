@@ -139,6 +139,24 @@ Output naming:
 
 ## Changelog
 
+### v3.9.1 (fixes & invoice polish)
+- Invoice footer (payment information) now repeats on every page, like the
+  header; previously it appeared only on the last page.
+- Every invoice shows a page number ("1 / 1", "1 / 2", "2 / 2", ...),
+  including single-page invoices.
+- Export: the Save-As dialog now defaults to the event's own folder (not
+  Downloads), and the confirmation shows the full path including that
+  folder.
+- Catch log: adding a name that is not in the participant list now says so
+  ("not in the participant list") instead of the wrong "already exists";
+  a name not added to the current round gets its own clear message.
+- Report logo keeps its aspect ratio (rectangular logos are no longer
+  squashed into a square). Uploaded logos/watermarks are fitted within a
+  size box with aspect ratio preserved - never stretched.
+- Invoices now show the event name and location between the client block
+  and the line-item table, on every page (previously the event was only
+  implied by the description line, which detailed invoices replace).
+
 ### v3.9 (Group D - invoicing enhancements)
 - Detailed invoice option (checkbox in the invoice form, off by default).
   For an individual it itemises one line per round entered (Round 1,

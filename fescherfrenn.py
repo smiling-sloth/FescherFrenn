@@ -1003,10 +1003,11 @@ class FishingApp:
                 messagebox.showerror("Error", L["error"])
                 return
             if name not in self.data["participants"]:
-                messagebox.showerror("Error", L["duplicate_name"])
+                messagebox.showerror("Error", L["catch_unknown_participant"])
                 return
             if name not in self.data["sessions"][self.current_manche]["participants"]:
-                messagebox.showerror("Error", L["error"])
+                messagebox.showerror("Error", L["catch_not_in_round"].format(
+                    rnd=key_to_display(self.lang, self.current_manche)))
                 return
             weight = float(weight_str.replace(",", "."))
             num_catches = int(num_catches_str)
@@ -2311,7 +2312,7 @@ class FishingApp:
             except ValueError:
                 ev_date = ""
             ev_name = self.data["event"].get("name", "")
-            desc_entry.insert(0, f"Manche Concours {ev_name} {ev_date}".strip())
+            desc_entry.insert(0, f"{ev_name} {ev_date}".strip())
         row += 1
 
         # Unit price.
@@ -2649,6 +2650,18 @@ class FishingApp:
             c.setStrokeColorRGB(0.6, 0.6, 0.6)
             c.setLineWidth(0.6)
             c.line(40, sep_y, W - 40, sep_y)
+            # Event name + location, in the gap between CLIENT and the table.
+            ev = self.data.get("event", {})
+            ev_name = (ev.get("name") or "").strip()
+            ev_loc = (ev.get("location") or "").strip()
+            c.setFillColorRGB(*self.INV_TEXT_DARK)
+            ev_y = sep_y - 30
+            if ev_name:
+                c.setFont("Helvetica-Bold", 13)
+                c.drawString(40, ev_y, ev_name)
+            if ev_loc:
+                c.setFont("Helvetica", 11)
+                c.drawString(40, ev_y - 18, ev_loc)
             header_y = sep_y - 90
             c.setFillColorRGB(*self.INV_TEXT_DARK)
             c.setFont("Helvetica-Bold", 11)
@@ -2701,72 +2714,108 @@ class FishingApp:
             ry -= line_step
             c.drawString(rx, ry, CONFIG.get("issuer_email", ""))
 
-        # ---- line items, paginated ----
+        # ---- layout: split rows into pages, then render ----
         FOOTER_H = 160
         LINE_STEP = 20
-        LINE_BOTTOM = FOOTER_H + 60   # don't draw a row below this on a page
-        line_y = draw_page_top()
-        c.setFillColorRGB(*self.INV_TEXT_DARK)
-        c.setFont("Helvetica", 11)
-        last_line_y = line_y + LINE_STEP
-        for (ldesc, lqty, lamt) in rows:
-            if line_y < LINE_BOTTOM:
-                c.showPage()
-                line_y = draw_page_top()
-                c.setFillColorRGB(*self.INV_TEXT_DARK)
-                c.setFont("Helvetica", 11)
-            c.drawString(col_desc_x, line_y, str(ldesc))
-            c.drawString(col_qty_x, line_y, str(lqty))
-            c.drawString(col_tva_x, line_y, "0%")
-            c.drawRightString(col_amt_x, line_y, self._fmt_invoice_amount(lamt))
-            last_line_y = line_y
-            line_y -= LINE_STEP
+        FIRST_Y = (H - 180 - 30 - 56 - 90 - 30)   # first row y (see draw_page_top)
+        LINE_BOTTOM = FOOTER_H + 60               # lowest a row may sit
+        TOTALS_TERMS_H = 150                      # room totals + terms need
 
-        # Totals + payment terms need ~150pt above the footer; page-break first
-        # if the last row sits too low.
-        if last_line_y - 28 < FOOTER_H + 150:
-            c.showPage()
-            last_line_y = draw_page_top()
+        def _rows_capacity(from_y):
+            n = 0
+            y = from_y
+            while y >= LINE_BOTTOM:
+                n += 1
+                y -= LINE_STEP
+            return n
+
+        # Phase 1: page-break decisions (no drawing), mirroring the renderer.
+        pages = []          # each page: list of rows
+        cur = []
+        y = FIRST_Y
+        for r in rows:
+            if y < LINE_BOTTOM:
+                pages.append(cur)
+                cur = []
+                y = FIRST_Y
+            cur.append(r)
+            last_y = y
+            y -= LINE_STEP
+        pages.append(cur)
+        # Totals + terms go under the last row; if they don't fit, add a page.
+        last_y = FIRST_Y - LINE_STEP * (len(pages[-1]) - 1) if pages[-1] else FIRST_Y
+        totals_on_new_page = (last_y - 28 < FOOTER_H + TOTALS_TERMS_H)
+        if totals_on_new_page:
+            pages.append([])
+        total_pages = len(pages)
+
+        def draw_page_number(idx):
+            c.saveState()
             c.setFillColorRGB(*self.INV_TEXT_DARK)
+            c.setFont("Helvetica", 9)
+            c.drawCentredString(W / 2, FOOTER_H + 18, f"{idx} / {total_pages}")
+            c.restoreState()
 
-        c.setLineWidth(0.4)
-        c.line(40, last_line_y - 14, W - 40, last_line_y - 14)
-        totals = [
-            ("Sous-total", amount_str, False),
-            ("TVA", "0\u20ac", False),
-            ("Total", amount_str, True),
-        ]
-        tot_y = last_line_y - 38
-        for label, value, bold in totals:
-            c.setFont("Helvetica-Bold" if bold else "Helvetica", 12 if bold else 11)
-            c.drawRightString(col_tva_x + 28, tot_y, label)
-            c.drawRightString(col_amt_x, tot_y, value)
-            tot_y -= 22
-        c.setLineWidth(0.4)
-        c.line(40, last_line_y - 28, W - 40, last_line_y - 28)
+        # Phase 2: render.
+        for pidx, page_rows in enumerate(pages, start=1):
+            line_y = draw_page_top()
+            c.setFillColorRGB(*self.INV_TEXT_DARK)
+            c.setFont("Helvetica", 11)
+            row_y = line_y
+            for (ldesc, lqty, lamt) in page_rows:
+                c.drawString(col_desc_x, row_y, str(ldesc))
+                c.drawString(col_qty_x, row_y, str(lqty))
+                c.drawString(col_tva_x, row_y, "0%")
+                c.drawRightString(col_amt_x, row_y, self._fmt_invoice_amount(lamt))
+                last_row_y = row_y
+                row_y -= LINE_STEP
+            if not page_rows:
+                last_row_y = line_y  # totals-only final page
 
-        days = CONFIG.get("payment_terms_days", 30)
-        legal = CONFIG.get("issuer_legal_name", "")
-        terms = (f"\u00c0 transf\u00e9rer sur le compte courant de {legal} dans un "
-                 f"d\u00e9lai de {days} jours calendaires \u00e0 compter de la date d'\u00e9mission")
-        c.setFont("Helvetica", 10)
-        terms_y = tot_y - 30
-        words = terms.split()
-        max_w = W - 80
-        line = ""
-        for w in words:
-            test = (line + " " + w).strip()
-            if c.stringWidth(test, "Helvetica", 10) <= max_w:
-                line = test
-            else:
-                c.drawString(40, terms_y, line)
-                terms_y -= 14
-                line = w
-        if line:
-            c.drawString(40, terms_y, line)
+            # Totals + terms only on the last page.
+            if pidx == total_pages:
+                ly = last_row_y
+                c.setLineWidth(0.4)
+                c.line(40, ly - 14, W - 40, ly - 14)
+                totals = [
+                    ("Sous-total", amount_str, False),
+                    ("TVA", "0\u20ac", False),
+                    ("Total", amount_str, True),
+                ]
+                tot_y = ly - 38
+                for label, value, bold in totals:
+                    c.setFont("Helvetica-Bold" if bold else "Helvetica", 12 if bold else 11)
+                    c.drawRightString(col_tva_x + 28, tot_y, label)
+                    c.drawRightString(col_amt_x, tot_y, value)
+                    tot_y -= 22
+                c.setLineWidth(0.4)
+                c.line(40, ly - 28, W - 40, ly - 28)
 
-        draw_footer()
-        c.showPage()
+                days = CONFIG.get("payment_terms_days", 30)
+                legal = CONFIG.get("issuer_legal_name", "")
+                terms = (f"\u00c0 transf\u00e9rer sur le compte courant de {legal} dans un "
+                         f"d\u00e9lai de {days} jours calendaires \u00e0 compter de la date d'\u00e9mission")
+                c.setFont("Helvetica", 10)
+                terms_y = tot_y - 30
+                words = terms.split()
+                max_w = W - 80
+                line = ""
+                for w in words:
+                    test = (line + " " + w).strip()
+                    if c.stringWidth(test, "Helvetica", 10) <= max_w:
+                        line = test
+                    else:
+                        c.drawString(40, terms_y, line)
+                        terms_y -= 14
+                        line = w
+                if line:
+                    c.drawString(40, terms_y, line)
+
+            # Footer + page number on EVERY page.
+            draw_footer()
+            draw_page_number(pidx)
+            c.showPage()
+
         c.save()
         return path
 
@@ -3111,7 +3160,20 @@ class FishingApp:
             sess_label = key_to_display(self.lang, sk)
             logo_path = "logo.png"
             if os.path.exists(logo_path):
-                logo = Image(logo_path, width=1 * inch, height=1 * inch)
+                # Fit the logo inside a 1-inch box, preserving aspect ratio so
+                # rectangular logos are not distorted into a square.
+                box = 1 * inch
+                lw, lh = box, box
+                try:
+                    from PIL import Image as _PILImage
+                    with _PILImage.open(logo_path) as _im:
+                        iw, ih = _im.size
+                    if iw and ih:
+                        scale = min(box / iw, box / ih)
+                        lw, lh = iw * scale, ih * scale
+                except Exception as _e:
+                    logging.warning(f"logo aspect read failed: {_e}")
+                logo = Image(logo_path, width=lw, height=lh)
                 logo.hAlign = "LEFT"
                 story.append(logo)
                 story.append(Spacer(1, 12))
@@ -3518,6 +3580,7 @@ class FishingApp:
         dest = filedialog.asksaveasfilename(
             title=LANGUAGES[self.lang]["export_event"],
             defaultextension=".json",
+            initialdir=os.path.abspath(folder_name),
             initialfile=f"{folder_name}.json",
             filetypes=[("JSON files", "*.json")])
         if not dest or os.path.abspath(dest) == os.path.abspath(canonical):
