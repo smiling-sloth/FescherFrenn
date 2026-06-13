@@ -23,7 +23,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "3.4.2"
+APP_VERSION = "3.5"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -2928,23 +2928,135 @@ class FishingApp:
             logging.error(f"export_event failed: {str(e)}")
             messagebox.showerror("Error", f"Export failed: {str(e)}")
 
-    def import_event(self):
+    def _scan_local_events(self):
+        """Find event JSON files in the application folder.
+
+        Events are stored as <folder>/<folder>.json where folder is
+        YYYYMMDD_EventName. Rather than parse the folder name (which cannot
+        tell a user's underscore from one inserted for a space), we read each
+        JSON and take the real event name and date from inside it.
+
+        Returns a list of dicts: {path, name, date, date_sort} sorted by date
+        descending (most recent first).
+        """
+        events = []
+        try:
+            base = os.getcwd()
+            for entry in os.listdir(base):
+                folder = os.path.join(base, entry)
+                if not os.path.isdir(folder):
+                    continue
+                data_file = os.path.join(folder, f"{entry}.json")
+                if not os.path.exists(data_file):
+                    continue
+                try:
+                    with open(data_file, 'r', encoding='utf-8') as fh:
+                        d = json.load(fh)
+                    ev = d.get("event", {}) if isinstance(d, dict) else {}
+                    name = (ev.get("name") or entry).strip()
+                    date = (ev.get("date") or "").strip()
+                    try:
+                        date_sort = datetime.strptime(date, "%d/%m/%Y")
+                    except ValueError:
+                        date_sort = datetime.min
+                    events.append({"path": data_file, "name": name,
+                                   "date": date, "date_sort": date_sort})
+                except Exception as e:
+                    logging.error(f"scan event {data_file} failed: {e}")
+        except Exception as e:
+            logging.error(f"_scan_local_events failed: {e}")
+        events.sort(key=lambda e: e["date_sort"], reverse=True)
+        return events
+
+    def _load_event_file(self, file_path):
+        """Validate and load an event JSON file into the app."""
+        with open(file_path, 'r', encoding='utf-8') as file:
+            imported_data = json.load(file)
+        if (not isinstance(imported_data, dict) or "event" not in imported_data
+                or "participants" not in imported_data):
+            raise ValueError("Invalid event data format")
+        self.data = migrate_data(imported_data)
+        self.root.title(LANGUAGES[self.lang]["title"])
+        self.build_main_ui()
+        messagebox.showinfo(LANGUAGES[self.lang]["saved"],
+                            LANGUAGES[self.lang]["import_success"])
+
+    def _browse_import(self):
+        """File-dialog import (any location): archives, emailed files, etc."""
         try:
             file_path = filedialog.askopenfilename(filetypes=[("JSON files", "*.json")])
             if not file_path:
-                return
-            with open(file_path, 'r', encoding='utf-8') as file:
-                imported_data = json.load(file)
-        
-            if not isinstance(imported_data, dict) or "event" not in imported_data or "participants" not in imported_data:
-                raise ValueError("Invalid event data format")
-            self.data = migrate_data(imported_data)
-            self.root.title(LANGUAGES[self.lang]["title"])
-            self.build_main_ui()
-            messagebox.showinfo(LANGUAGES[self.lang]["saved"], LANGUAGES[self.lang]["import_success"])
+                return False
+            self._load_event_file(file_path)
+            return True
         except Exception as e:
-            logging.error(f"import_event failed: {str(e)}")
-            messagebox.showerror(LANGUAGES[self.lang]["error"], f"Failed to import event: {str(e)}")
+            logging.error(f"browse import failed: {str(e)}")
+            messagebox.showerror(LANGUAGES[self.lang]["error"],
+                                 f"Failed to import event: {str(e)}")
+            return False
+
+    def import_event(self):
+        if self._raise_open_panel():
+            return
+        L = LANGUAGES[self.lang]
+        events = self._scan_local_events()
+
+        win = Toplevel(self.root)
+        win.title(L["import_select_title"])
+        win.transient(self.root)
+        win.update_idletasks()
+        win.grab_set()
+        win.geometry("620x420")
+        self._register_panel(win)
+
+        outer = ttk.Frame(win, padding=10)
+        outer.pack(fill="both", expand=True)
+        btns = ttk.Frame(outer)
+        btns.pack(side="bottom", fill="x", pady=(8, 0))
+
+        cols = ("date", "title")
+        tv = ttk.Treeview(outer, columns=cols, show="headings", height=14)
+        tv.heading("date", text=L["import_col_date"])
+        tv.heading("title", text=L["import_col_title"])
+        tv.column("date", width=110, anchor="center")
+        tv.column("title", width=440, anchor="w")
+        sb = ttk.Scrollbar(outer, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        tv.pack(side="top", fill="both", expand=True)
+
+        if events:
+            for idx, ev in enumerate(events):
+                tv.insert("", "end", iid=str(idx), values=(ev["date"], ev["name"]))
+        else:
+            tv.insert("", "end", values=("", L["import_no_events"]))
+
+        def open_selected(_evt=None):
+            sel = tv.selection()
+            if not sel:
+                messagebox.showinfo(L["import_select_title"], L["import_select_row"])
+                return
+            try:
+                idx = int(sel[0])
+            except ValueError:
+                return  # the "no events" placeholder row
+            path = events[idx]["path"]
+            win.destroy()
+            try:
+                self._load_event_file(path)
+            except Exception as e:
+                logging.error(f"import_event open failed: {str(e)}")
+                messagebox.showerror(L["error"], f"Failed to import event: {str(e)}")
+
+        def browse():
+            win.destroy()
+            self._browse_import()
+
+        tv.bind("<Double-1>", open_selected)
+        ttk.Button(btns, text=L["import_open"], command=open_selected).pack(side="left", padx=3)
+        ttk.Button(btns, text=L["import_browse"], command=browse).pack(side="left", padx=3)
+        ttk.Button(btns, text=L["cancel"], command=win.destroy).pack(side="right", padx=3)
+        win.bind("<Return>", open_selected)
 
     def open_date_picker(self, parent, initial_str=None):
         """Modal dialog with an inline tkcalendar Calendar. Returns the chosen

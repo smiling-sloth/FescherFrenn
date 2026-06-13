@@ -10,7 +10,7 @@ operated by non-technical users during a live event.
 
 - **Languages:** English, French, German, Luxembourgish (invoices are French)
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 3.4.2
+- **Version:** 3.5
 - **License:** MIT
 
 ---
@@ -81,7 +81,7 @@ Linux you may need `sudo apt install python3-tk`.
 ## Building the executables
 
 Builds are produced automatically by GitHub Actions
-(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.4.2`
+(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.5`
 builds the Windows `.exe` and macOS `.app` and drafts a release with both
 attached. The workflow bundles `config.json` and `help.json` already; if you
 keep `watermark.png` and `logo.icns` in the repo, add them to the workflow's
@@ -138,6 +138,16 @@ Output naming:
 ---
 
 ## Changelog
+
+### v3.5
+- Import Event now opens a panel listing every event found in the
+  application folder, in a two-column grid (date, event name) sorted with
+  the most recent first. Double-click a row or use Open to load it; Cancel
+  closes the panel; Browse... opens the previous file dialog for events
+  stored elsewhere (archives, emailed files, moved copies). The displayed
+  date and name are read from inside each event's JSON, so they show exactly
+  what was typed - real spaces and any user-entered underscores are kept,
+  with no folder-name guesswork.
 
 ### v3.4.2
 - Invoice PDFs can now be opened from inside the app: double-click an

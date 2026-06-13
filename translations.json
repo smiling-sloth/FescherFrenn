@@ -192,7 +192,14 @@
     "inv_pdf_missing": "The PDF file for this invoice was not found. Use Reprint to regenerate it.",
     "inv_invalid_date": "Invalid date. Use the format dd/mm/yyyy.",
     "inv_pick_date": "Pick a date",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "import_select_title": "Import Event",
+    "import_col_date": "Date",
+    "import_col_title": "Event",
+    "import_browse": "Browse...",
+    "import_open": "Open",
+    "import_no_events": "No events found in the application folder.",
+    "import_select_row": "Please select an event to open, or use Browse."
   },
   "French": {
     "title": "Registre de Concours de Pêche Fëscherfrënn Stengefort",
@@ -387,7 +394,14 @@
     "inv_pdf_missing": "Le fichier PDF de cette facture est introuvable. Utilisez Réimprimer pour le régénérer.",
     "inv_invalid_date": "Date invalide. Utilisez le format jj/mm/aaaa.",
     "inv_pick_date": "Choisir une date",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "import_select_title": "Importer un concours",
+    "import_col_date": "Date",
+    "import_col_title": "Concours",
+    "import_browse": "Parcourir...",
+    "import_open": "Ouvrir",
+    "import_no_events": "Aucun concours trouvé dans le dossier de l'application.",
+    "import_select_row": "Veuillez sélectionner un concours à ouvrir, ou utilisez Parcourir."
   },
   "German": {
     "title": "Fëscherfrënn Stengefort Angelwettbewerb Register",
@@ -582,7 +596,14 @@
     "inv_pdf_missing": "Die PDF-Datei dieser Rechnung wurde nicht gefunden. Mit „Erneut drucken“ neu erzeugen.",
     "inv_invalid_date": "Ungültiges Datum. Format tt/mm/jjjj verwenden.",
     "inv_pick_date": "Datum wählen",
-    "cancel": "Abbrechen"
+    "cancel": "Abbrechen",
+    "import_select_title": "Veranstaltung importieren",
+    "import_col_date": "Datum",
+    "import_col_title": "Veranstaltung",
+    "import_browse": "Durchsuchen...",
+    "import_open": "Öffnen",
+    "import_no_events": "Keine Veranstaltungen im Anwendungsordner gefunden.",
+    "import_select_row": "Bitte eine Veranstaltung zum Öffnen wählen oder Durchsuchen verwenden."
   },
   "Luxembourgish": {
     "title": "Fëscherfrënn Stengefort Fëschkonkurrenz Register",
@@ -777,6 +798,13 @@
     "inv_pdf_missing": "D'PDF-Datei vun dëser Rechnung gouf net fonnt. Mat „Nei drécken“ nei erstellen.",
     "inv_invalid_date": "Ongëlteg Datum. Format dd/mm/jjjj benotzen.",
     "inv_pick_date": "Datum auswielen",
-    "cancel": "Ofbriechen"
+    "cancel": "Ofbriechen",
+    "import_select_title": "Evenement importéieren",
+    "import_col_date": "Datum",
+    "import_col_title": "Evenement",
+    "import_browse": "Duerchsichen...",
+    "import_open": "Opmaachen",
+    "import_no_events": "Keng Evenementer am Applikatiounsdossier fonnt.",
+    "import_select_row": "Wielt w.e.g. en Evenement fir opzemaachen, oder benotzt Duerchsichen."
   }
 }
