@@ -23,7 +23,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "3.8"
+APP_VERSION = "3.9"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -1941,6 +1941,38 @@ class FishingApp:
                 qty += 1
         return qty
 
+    def _compute_detail_lines(self, rt, recipient, unit_price):
+        """Breakdown rows for a detailed invoice, as [desc, qty, amount].
+
+        Individual -> one row per round the participant is in (qty 1 each).
+        Club       -> one row per member, qty = that member's round count.
+        Either way the rows sum to the invoice's quantity x unit price.
+        """
+        lines = []
+        if rt == "individual":
+            for sk in SESSION_KEYS:
+                if recipient in self.data["sessions"][sk]["participants"]:
+                    lines.append([key_to_display(self.lang, sk), 1, round(unit_price, 2)])
+        else:  # club
+            target = (recipient or "").strip().casefold()
+            counts = {}
+            for sk in SESSION_KEYS:
+                for n in self.data["sessions"][sk]["participants"]:
+                    info = self.data["participants"].get(n, {})
+                    if (info.get("club") or "").strip().casefold() == target:
+                        counts[n] = counts.get(n, 0) + 1
+            for n in sorted(counts, key=str.lower):
+                lines.append([n, counts[n], round(counts[n] * unit_price, 2)])
+        return lines
+
+    def _invoice_detail_lines(self, invoice):
+        """Rows to render on the invoice. Detailed invoices use the stored
+        breakdown (so reprints are stable); otherwise a single summary row."""
+        if invoice.get("detailed") and invoice.get("detail_lines"):
+            return [(d, q, a) for d, q, a in invoice["detail_lines"]]
+        return [(invoice.get("description", ""), invoice.get("quantity", ""),
+                 invoice.get("amount", 0))]
+
     def _is_separator_label(self, s):
         L = LANGUAGES[self.lang]
         return s in (L["inv_individuals_group"], L["inv_others_group"],
@@ -2303,6 +2335,13 @@ class FishingApp:
             qty_entry.insert(0, str(existing.get("quantity", 1)))
         row += 1
 
+        # Detailed-invoice toggle (default off): per-round lines for an
+        # individual, per-member lines for a club.
+        detailed_var = tk.BooleanVar(value=bool(existing.get("detailed", False)) if editing else False)
+        ttk.Checkbutton(frame, text=L["inv_detailed"], variable=detailed_var).grid(
+            row=row, column=0, columnspan=2, sticky="w", pady=(0, 2))
+        row += 1
+
         # Warning area: empty by default, filled by on_recipient_picked.
         warn_label = tk.Label(frame, text="", justify="left", anchor="w",
                               wraplength=480, foreground="#A04500",
@@ -2412,9 +2451,11 @@ class FishingApp:
             except ValueError:
                 messagebox.showerror("Error", L["inv_invalid_qty"])
                 return
-            if rt == "individual" and qty > 4:
-                # Allowed (e.g. a caretaker paying for a minor); just inform.
-                messagebox.showwarning("", L["inv_qty_indiv_high"])
+            if rt == "individual":
+                max_sessions = self.data.get("config", {}).get("num_rounds", 3) + 1
+                if qty > max_sessions:
+                    # Allowed (e.g. a caretaker paying for a minor); just inform.
+                    messagebox.showwarning("", L["inv_qty_indiv_high"])
 
             # Determine the sequence number but DO NOT advance the counter yet -
             # a later failure must not bump it (the v3.3 runaway-counter bug).
@@ -2456,7 +2497,12 @@ class FishingApp:
                 "unit_price": price,
                 "quantity": qty,
                 "amount": amount,
+                "detailed": bool(detailed_var.get()),
             }
+            # For a detailed invoice, freeze the breakdown now so reprints are
+            # stable even if the event roster changes later.
+            if invoice["detailed"]:
+                invoice["detail_lines"] = self._compute_detail_lines(rt, recipient, price)
 
             # Guarantee the list exists even for events created before this fix.
             self.data.setdefault("invoices", [])
@@ -2537,42 +2583,21 @@ class FishingApp:
         c = _rlcanvas.Canvas(path, pagesize=A4)
         W, H = A4
 
-        # --- watermark (drawn first, behind everything else) ---
-        wm = "watermark.png"
-        if os.path.exists(wm):
-            try:
-                c.saveState()
-                c.setFillAlpha(0.12)
-                size = 480
-                c.drawImage(wm, (W - size) / 2, (H - size) / 2, width=size, height=size,
-                            mask="auto", preserveAspectRatio=True)
-                c.restoreState()
-            except Exception as exc:
-                logging.warning(f"Watermark draw failed: {exc}")
+        amount_total = invoice.get("amount", 0)
+        amount_str = self._fmt_invoice_amount(amount_total)
+        rows = self._invoice_detail_lines(invoice)
 
-        # --- top blue banner -----------------------------------------
-        banner_h = 180
-        c.setFillColorRGB(*self.INV_BLUE_TOP)
-        c.rect(0, H - banner_h, W, banner_h, stroke=0, fill=1)
+        col_desc_x = 40
+        col_qty_x = 360
+        col_tva_x = 440
+        col_amt_x = W - 40   # right-aligned
 
-        # FACTURE - big white
-        c.setFillColorRGB(1, 1, 1)
-        c.setFont("Helvetica-Bold", 70)
-        c.drawString(40, H - banner_h + 60, "FACTURE")
-
-        # Right block: date + invoice number
-        c.setFont("Helvetica", 12)
+        # Pre-format the date / number once for reuse on every page.
         try:
             inv_dt = datetime.strptime(invoice["date"], "%d/%m/%Y")
             date_str = self.format_french_date(inv_dt)
         except (ValueError, KeyError):
             date_str = invoice.get("date", "")
-        # Date sits at the top; "Num\u00e9ro de facture" label and the full
-        # invoice number stack underneath on two separate lines.
-        c.drawRightString(W - 40, H - banner_h + 110, date_str)
-        c.setFont("Helvetica-Bold", 13)
-        c.drawRightString(W - 40, H - banner_h + 88, "Num\u00e9ro de facture")
-        c.setFont("Helvetica", 12)
         full_number = invoice.get("number", "")
         if not full_number:
             seq = invoice.get("seq", "")
@@ -2580,71 +2605,152 @@ class FishingApp:
                 full_number = f"{int(seq):02d}"
             except (TypeError, ValueError):
                 full_number = str(seq)
-        c.drawRightString(W - 40, H - banner_h + 70, full_number)
 
-        # --- white body ---------------------------------------------
-        body_top = H - banner_h - 30
+        page_state = {"n": 0}
+
+        def draw_page_top():
+            """Draw the per-page chrome (watermark, banner, client, table
+            header) and return the y of the first line-item row."""
+            page_state["n"] += 1
+            # --- watermark (behind everything) ---
+            wm = "watermark.png"
+            if os.path.exists(wm):
+                try:
+                    c.saveState()
+                    c.setFillAlpha(0.12)
+                    size = 480
+                    c.drawImage(wm, (W - size) / 2, (H - size) / 2, width=size, height=size,
+                                mask="auto", preserveAspectRatio=True)
+                    c.restoreState()
+                except Exception as exc:
+                    logging.warning(f"Watermark draw failed: {exc}")
+            # --- top blue banner ---
+            banner_h = 180
+            c.setFillColorRGB(*self.INV_BLUE_TOP)
+            c.rect(0, H - banner_h, W, banner_h, stroke=0, fill=1)
+            c.setFillColorRGB(1, 1, 1)
+            c.setFont("Helvetica-Bold", 70)
+            c.drawString(40, H - banner_h + 60, "FACTURE")
+            c.setFont("Helvetica", 12)
+            c.drawRightString(W - 40, H - banner_h + 110, date_str)
+            c.setFont("Helvetica-Bold", 13)
+            c.drawRightString(W - 40, H - banner_h + 88, "Num\u00e9ro de facture")
+            c.setFont("Helvetica", 12)
+            c.drawRightString(W - 40, H - banner_h + 70, full_number)
+            # --- white body: CLIENT + table header ---
+            body_top = H - banner_h - 30
+            c.setFillColorRGB(*self.INV_TEXT_DARK)
+            c.setFont("Helvetica-Bold", 14)
+            label = "CLIENT" if page_state["n"] == 1 else f'CLIENT  {LANGUAGES[self.lang]["inv_page_suite"]}'
+            c.drawString(40, body_top, label)
+            c.setFont("Helvetica", 12)
+            c.drawString(40, body_top - 22, invoice.get("recipient_name", ""))
+            sep_y = body_top - 56
+            c.setStrokeColorRGB(0.6, 0.6, 0.6)
+            c.setLineWidth(0.6)
+            c.line(40, sep_y, W - 40, sep_y)
+            header_y = sep_y - 90
+            c.setFillColorRGB(*self.INV_TEXT_DARK)
+            c.setFont("Helvetica-Bold", 11)
+            c.drawString(col_desc_x, header_y, "Description")
+            c.drawString(col_qty_x, header_y, "Quantit\u00e9")
+            c.drawString(col_tva_x, header_y, "TVA")
+            c.drawRightString(col_amt_x, header_y, "Amount")
+            c.setLineWidth(0.4)
+            c.line(40, header_y - 6, W - 40, header_y - 6)
+            return header_y - 30
+
+        def draw_footer():
+            foot_h = 160
+            c.setFillColorRGB(*self.INV_BLUE_BOTTOM)
+            c.rect(0, 0, W, foot_h, stroke=0, fill=1)
+            c.setFillColorRGB(1, 1, 1)
+            header_y = foot_h - 28
+            line_step = 16
+            content_y = header_y - 30
+            lx = 40
+            c.setFont("Helvetica-Bold", 13)
+            c.drawString(lx, header_y, "INFORMATIONS DE PAIEMENT")
+            ly = content_y
+            c.setFont("Helvetica", 10)
+            c.drawString(lx, ly, f"Nom: {CONFIG.get('bank_account_holder', '')}")
+            ly -= line_step
+            c.drawString(lx, ly, f"Banque : {CONFIG.get('bank_name', '')}")
+            ly -= line_step
+            c.drawString(lx, ly, "Num\u00e9ro de compte :")
+            ly -= line_step
+            c.drawString(lx, ly, " ".join(CONFIG.get("iban_groups", [])))
+            rx = W / 2 - 10
+            line1, line2 = self._split_legal_name(CONFIG.get("issuer_legal_name", ""))
+            c.setFont("Helvetica-Bold", 13)
+            c.drawString(rx, header_y, line1.upper())
+            if line2:
+                c.drawString(rx, header_y - 18, line2.upper())
+            ry = content_y
+            c.setFont("Helvetica", 10)
+            addr1 = (f"{CONFIG.get('issuer_house_number', '')}, "
+                     f"{CONFIG.get('issuer_street', '')}, "
+                     f"{CONFIG.get('issuer_postcode_country', '')}-"
+                     f"{CONFIG.get('issuer_postcode_digits', '')},")
+            c.drawString(rx, ry, addr1)
+            ry -= line_step
+            addr2 = f"{CONFIG.get('issuer_city', '')}, {CONFIG.get('issuer_country', '')}"
+            c.drawString(rx, ry, addr2)
+            ry -= line_step
+            c.drawString(rx, ry, CONFIG.get("issuer_phone", ""))
+            ry -= line_step
+            c.drawString(rx, ry, CONFIG.get("issuer_email", ""))
+
+        # ---- line items, paginated ----
+        FOOTER_H = 160
+        LINE_STEP = 20
+        LINE_BOTTOM = FOOTER_H + 60   # don't draw a row below this on a page
+        line_y = draw_page_top()
         c.setFillColorRGB(*self.INV_TEXT_DARK)
-
-        # CLIENT block
-        c.setFont("Helvetica-Bold", 14)
-        c.drawString(40, body_top, "CLIENT")
-        c.setFont("Helvetica", 12)
-        c.drawString(40, body_top - 22, invoice.get("recipient_name", ""))
-
-        # Long horizontal separator
-        sep_y = body_top - 56
-        c.setStrokeColorRGB(0.6, 0.6, 0.6)
-        c.setLineWidth(0.6)
-        c.line(40, sep_y, W - 40, sep_y)
-
-        # Table header
-        col_desc_x = 40
-        col_qty_x = 360
-        col_tva_x = 440
-        col_amt_x = W - 40   # right-aligned
-        header_y = sep_y - 90
-        c.setFont("Helvetica-Bold", 11)
-        c.drawString(col_desc_x, header_y, "Description")
-        c.drawString(col_qty_x, header_y, "Quantité")
-        c.drawString(col_tva_x, header_y, "TVA")
-        c.drawRightString(col_amt_x, header_y, "Amount")
-        c.setLineWidth(0.4)
-        c.line(40, header_y - 6, W - 40, header_y - 6)
-
-        # One line item
         c.setFont("Helvetica", 11)
-        line_y = header_y - 30
-        c.drawString(col_desc_x, line_y, invoice.get("description", ""))
-        c.drawString(col_qty_x, line_y, str(invoice.get("quantity", "")))
-        c.drawString(col_tva_x, line_y, "0%")
-        amount_str = self._fmt_invoice_amount(invoice.get("amount", 0))
-        c.drawRightString(col_amt_x, line_y, amount_str)
-        c.line(40, line_y - 14, W - 40, line_y - 14)
+        last_line_y = line_y + LINE_STEP
+        for (ldesc, lqty, lamt) in rows:
+            if line_y < LINE_BOTTOM:
+                c.showPage()
+                line_y = draw_page_top()
+                c.setFillColorRGB(*self.INV_TEXT_DARK)
+                c.setFont("Helvetica", 11)
+            c.drawString(col_desc_x, line_y, str(ldesc))
+            c.drawString(col_qty_x, line_y, str(lqty))
+            c.drawString(col_tva_x, line_y, "0%")
+            c.drawRightString(col_amt_x, line_y, self._fmt_invoice_amount(lamt))
+            last_line_y = line_y
+            line_y -= LINE_STEP
 
-        # Totals stack on the right
+        # Totals + payment terms need ~150pt above the footer; page-break first
+        # if the last row sits too low.
+        if last_line_y - 28 < FOOTER_H + 150:
+            c.showPage()
+            last_line_y = draw_page_top()
+            c.setFillColorRGB(*self.INV_TEXT_DARK)
+
+        c.setLineWidth(0.4)
+        c.line(40, last_line_y - 14, W - 40, last_line_y - 14)
         totals = [
             ("Sous-total", amount_str, False),
-            ("TVA", "0€", False),
+            ("TVA", "0\u20ac", False),
             ("Total", amount_str, True),
         ]
-        tot_y = line_y - 38
+        tot_y = last_line_y - 38
         for label, value, bold in totals:
-            c.setFont("Helvetica-Bold" if bold else "Helvetica", 11 if not bold else 12)
+            c.setFont("Helvetica-Bold" if bold else "Helvetica", 12 if bold else 11)
             c.drawRightString(col_tva_x + 28, tot_y, label)
             c.drawRightString(col_amt_x, tot_y, value)
             tot_y -= 22
         c.setLineWidth(0.4)
-        c.line(40, line_y - 28, W - 40, line_y - 28)
+        c.line(40, last_line_y - 28, W - 40, last_line_y - 28)
 
-        # Payment terms text
         days = CONFIG.get("payment_terms_days", 30)
         legal = CONFIG.get("issuer_legal_name", "")
-        terms = (f"À transférer sur le compte courant de {legal} dans un "
-                 f"délai de {days} jours calendaires à compter de la date d'émission")
+        terms = (f"\u00c0 transf\u00e9rer sur le compte courant de {legal} dans un "
+                 f"d\u00e9lai de {days} jours calendaires \u00e0 compter de la date d'\u00e9mission")
         c.setFont("Helvetica", 10)
         terms_y = tot_y - 30
-        # naive word wrap to fit within body width
         words = terms.split()
         max_w = W - 80
         line = ""
@@ -2659,57 +2765,7 @@ class FishingApp:
         if line:
             c.drawString(40, terms_y, line)
 
-        # --- bottom navy banner --------------------------------
-        # Symmetric 2-line header on both sides + 4 content lines = 6 lines.
-        # Banner height reduced from 200pt to 160pt with the new layout.
-        foot_h = 160
-        c.setFillColorRGB(*self.INV_BLUE_BOTTOM)
-        c.rect(0, 0, W, foot_h, stroke=0, fill=1)
-        c.setFillColorRGB(1, 1, 1)
-
-        header_y = foot_h - 28
-        line_step = 16
-        content_y = header_y - 30  # 30pt gap below the header pair
-
-        # ----- LEFT column: payment info ---------------------------
-        lx = 40
-        c.setFont("Helvetica-Bold", 13)
-        c.drawString(lx, header_y, "INFORMATIONS DE PAIEMENT")
-        # Second header line intentionally blank for layout parity with right.
-        ly = content_y
-        c.setFont("Helvetica", 10)
-        c.drawString(lx, ly, f"Nom: {CONFIG.get('bank_account_holder', '')}")
-        ly -= line_step
-        c.drawString(lx, ly, f"Banque : {CONFIG.get('bank_name', '')}")
-        ly -= line_step
-        c.drawString(lx, ly, "Numéro de compte :")
-        ly -= line_step
-        c.drawString(lx, ly, " ".join(CONFIG.get("iban_groups", [])))
-
-        # ----- RIGHT column: issuer (legal name in 2 lines) --------
-        rx = W / 2 - 10
-        line1, line2 = self._split_legal_name(CONFIG.get("issuer_legal_name", ""))
-        c.setFont("Helvetica-Bold", 13)
-        c.drawString(rx, header_y, line1.upper())
-        # Always advance even if line 2 is blank - keeps the row count even
-        # with the left side and keeps the layout predictable.
-        if line2:
-            c.drawString(rx, header_y - 18, line2.upper())
-        ry = content_y
-        c.setFont("Helvetica", 10)
-        addr1 = (f"{CONFIG.get('issuer_house_number', '')}, "
-                 f"{CONFIG.get('issuer_street', '')}, "
-                 f"{CONFIG.get('issuer_postcode_country', '')}-"
-                 f"{CONFIG.get('issuer_postcode_digits', '')},")
-        c.drawString(rx, ry, addr1)
-        ry -= line_step
-        addr2 = f"{CONFIG.get('issuer_city', '')}, {CONFIG.get('issuer_country', '')}"
-        c.drawString(rx, ry, addr2)
-        ry -= line_step
-        c.drawString(rx, ry, CONFIG.get("issuer_phone", ""))
-        ry -= line_step
-        c.drawString(rx, ry, CONFIG.get("issuer_email", ""))
-
+        draw_footer()
         c.showPage()
         c.save()
         return path

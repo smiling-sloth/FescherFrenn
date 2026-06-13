@@ -10,7 +10,7 @@ operated by non-technical users during a live event.
 
 - **Languages:** English, French, German, Luxembourgish (invoices are French)
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 3.8
+- **Version:** 3.9
 - **License:** MIT
 
 ---
@@ -81,7 +81,7 @@ Linux you may need `sudo apt install python3-tk`.
 ## Building the executables
 
 Builds are produced automatically by GitHub Actions
-(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.8`
+(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.9`
 builds the Windows `.exe` and macOS `.app` and drafts a release with both
 attached. The workflow bundles `config.json` and `help.json` already; if you
 keep `watermark.png` and `logo.icns` in the repo, add them to the workflow's
@@ -138,6 +138,21 @@ Output naming:
 ---
 
 ## Changelog
+
+### v3.9 (Group D - invoicing enhancements)
+- Detailed invoice option (checkbox in the invoice form, off by default).
+  For an individual it itemises one line per round entered (Round 1,
+  Round 2, ..., Final); for a club it lists each member with their round
+  count. Line amounts sum to the same total as the simple invoice.
+- The detailed breakdown is frozen onto the invoice when saved, so
+  reprinting reproduces exactly what was billed even if the roster later
+  changes.
+- Invoices now paginate cleanly: long member lists flow onto further pages
+  with a "CLIENT (continued)" header repeated, and the totals, payment
+  terms and the payment-information footer appear once, on the last page.
+  Simple one-line invoices look exactly as before.
+- The "high quantity" warning on an individual invoice now triggers above
+  number-of-rounds + 1 (from the event configuration) instead of a fixed 4.
 
 ### v3.8 (Package 3 - event management + branding assets)
 - Import Event and Manage Events are merged into a single "Events" panel

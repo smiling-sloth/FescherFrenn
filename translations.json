@@ -268,7 +268,9 @@
     "asset_removed": "{which} removed.",
     "asset_remove_q": "Remove the current {which}?",
     "asset_load_failed": "Could not read that image: {err}",
-    "asset_note": "Images are resized automatically. PNG/JPG/JPEG, up to {max} each."
+    "asset_note": "Images are resized automatically. PNG/JPG/JPEG, up to {max} each.",
+    "inv_detailed": "Detailed invoice (per-round / per-member lines)",
+    "inv_page_suite": "(continued)"
   },
   "French": {
     "title": "Registre de Concours de Pêche Fëscherfrënn Stengefort",
@@ -539,7 +541,9 @@
     "asset_removed": "{which} supprimé.",
     "asset_remove_q": "Supprimer le {which} actuel ?",
     "asset_load_failed": "Impossible de lire cette image : {err}",
-    "asset_note": "Les images sont redimensionnées automatiquement. PNG/JPG/JPEG, jusqu'à {max} chacune."
+    "asset_note": "Les images sont redimensionnées automatiquement. PNG/JPG/JPEG, jusqu'à {max} chacune.",
+    "inv_detailed": "Facture détaillée (lignes par manche / par membre)",
+    "inv_page_suite": "(suite)"
   },
   "German": {
     "title": "Fëscherfrënn Stengefort Angelwettbewerb Register",
@@ -810,7 +814,9 @@
     "asset_removed": "{which} entfernt.",
     "asset_remove_q": "Aktuelles {which} entfernen?",
     "asset_load_failed": "Bild konnte nicht gelesen werden: {err}",
-    "asset_note": "Bilder werden automatisch skaliert. PNG/JPG/JPEG, je bis {max}."
+    "asset_note": "Bilder werden automatisch skaliert. PNG/JPG/JPEG, je bis {max}.",
+    "inv_detailed": "Detaillierte Rechnung (Zeilen pro Runde / pro Mitglied)",
+    "inv_page_suite": "(Fortsetzung)"
   },
   "Luxembourgish": {
     "title": "Fëscherfrënn Stengefort Fëschkonkurrenz Register",
@@ -1081,6 +1087,8 @@
     "asset_removed": "{which} ewechgeholl.",
     "asset_remove_q": "Dat aktuellt {which} ewechhuelen?",
     "asset_load_failed": "Konnt dat Bild net liesen: {err}",
-    "asset_note": "Biller ginn automatesch ugepasst. PNG/JPG/JPEG, bis {max} pro Stéck."
+    "asset_note": "Biller ginn automatesch ugepasst. PNG/JPG/JPEG, bis {max} pro Stéck.",
+    "inv_detailed": "Detailléiert Rechnung (Linnen pro Manche / pro Member)",
+    "inv_page_suite": "(Fortsetzung)"
   }
 }
