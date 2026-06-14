@@ -10,7 +10,7 @@ operated by non-technical users during a live event.
 
 - **Languages:** English, French, German, Luxembourgish (invoices are French)
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 3.9
+- **Version:** 3.10
 - **License:** MIT
 
 ---
@@ -81,7 +81,7 @@ Linux you may need `sudo apt install python3-tk`.
 ## Building the executables
 
 Builds are produced automatically by GitHub Actions
-(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.9`
+(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.10`
 builds the Windows `.exe` and macOS `.app` and drafts a release with both
 attached. The workflow bundles `config.json` and `help.json` already; if you
 keep `watermark.png` and `logo.icns` in the repo, add them to the workflow's
@@ -138,6 +138,22 @@ Output naming:
 ---
 
 ## Changelog
+
+### v3.10 (dynamic number of rounds)
+- The number of rounds is now configurable (1-12, excluding the final),
+  not fixed at 3. Set it in the event configuration before locking the
+  event; the round selector, rankings, qualification, reports and invoices
+  all follow the chosen count automatically.
+- The round count is validated and frozen together with the other config
+  values when the event is configured (it cannot change once a roster or
+  catches exist). Changing it before locking rebuilds the session set.
+- Existing 3-round events open unchanged. Older events are never silently
+  truncated: if stored data uses more rounds than the configuration says,
+  the count is raised to fit the data.
+- Round labels are generated for any count ("Round 1..N" / "Manche 1..N" /
+  "Runde 1..N") in all four languages.
+- Note: the in-app help/manual still describes earlier versions; a full
+  documentation refresh is the remaining part of this milestone.
 
 ### v3.9.1 (fixes & invoice polish)
 - Invoice footer (payment information) now repeats on every page, like the

@@ -270,7 +270,12 @@
     "asset_load_failed": "Could not read that image: {err}",
     "asset_note": "Images are resized automatically. PNG/JPG/JPEG, up to {max} each.",
     "inv_detailed": "Detailed invoice (per-round / per-member lines)",
-    "inv_page_suite": "(continued)"
+    "inv_page_suite": "(continued)",
+    "catch_unknown_participant": "That name is not in the participant list. Add the participant first.",
+    "catch_not_in_round": "This participant has not been added to {rnd}. Add them to the round first.",
+    "round_label": "Round {n}",
+    "cfg_num_rounds_hint": "Number of rounds (1-12), excluding the final.",
+    "cfg_rounds_locked_note": "Rounds, max per round and proceed-to-final are locked once the event is configured."
   },
   "French": {
     "title": "Registre de Concours de Pêche Fëscherfrënn Stengefort",
@@ -543,7 +548,12 @@
     "asset_load_failed": "Impossible de lire cette image : {err}",
     "asset_note": "Les images sont redimensionnées automatiquement. PNG/JPG/JPEG, jusqu'à {max} chacune.",
     "inv_detailed": "Facture détaillée (lignes par manche / par membre)",
-    "inv_page_suite": "(suite)"
+    "inv_page_suite": "(suite)",
+    "catch_unknown_participant": "Ce nom ne figure pas dans la liste des participants. Ajoutez d'abord le participant.",
+    "catch_not_in_round": "Ce participant n'a pas été ajouté à {rnd}. Ajoutez-le d'abord à la manche.",
+    "round_label": "Manche {n}",
+    "cfg_num_rounds_hint": "Nombre de manches (1-12), hors finale.",
+    "cfg_rounds_locked_note": "Manches, max par manche et qualifiés sont verrouillés une fois le concours configuré."
   },
   "German": {
     "title": "Fëscherfrënn Stengefort Angelwettbewerb Register",
@@ -816,7 +826,12 @@
     "asset_load_failed": "Bild konnte nicht gelesen werden: {err}",
     "asset_note": "Bilder werden automatisch skaliert. PNG/JPG/JPEG, je bis {max}.",
     "inv_detailed": "Detaillierte Rechnung (Zeilen pro Runde / pro Mitglied)",
-    "inv_page_suite": "(Fortsetzung)"
+    "inv_page_suite": "(Fortsetzung)",
+    "catch_unknown_participant": "Dieser Name ist nicht in der Teilnehmerliste. Fügen Sie den Teilnehmer zuerst hinzu.",
+    "catch_not_in_round": "Dieser Teilnehmer wurde {rnd} nicht hinzugefügt. Fügen Sie ihn zuerst zur Runde hinzu.",
+    "round_label": "Runde {n}",
+    "cfg_num_rounds_hint": "Anzahl der Runden (1-12), ohne Finale.",
+    "cfg_rounds_locked_note": "Runden, Max pro Runde und Finaleinzug werden nach der Konfiguration gesperrt."
   },
   "Luxembourgish": {
     "title": "Fëscherfrënn Stengefort Fëschkonkurrenz Register",
@@ -1089,6 +1104,11 @@
     "asset_load_failed": "Konnt dat Bild net liesen: {err}",
     "asset_note": "Biller ginn automatesch ugepasst. PNG/JPG/JPEG, bis {max} pro Stéck.",
     "inv_detailed": "Detailléiert Rechnung (Linnen pro Manche / pro Member)",
-    "inv_page_suite": "(Fortsetzung)"
+    "inv_page_suite": "(Fortsetzung)",
+    "catch_unknown_participant": "Dësen Numm ass net an der Participantenlëscht. Setzt de Participant fir d'éischt bäi.",
+    "catch_not_in_round": "Dëse Participant ass net bei {rnd} bäigesat. Setzt en fir d'éischt bei d'Manche bäi.",
+    "round_label": "Manche {n}",
+    "cfg_num_rounds_hint": "Unzuel Manchen (1-12), ouni Finale.",
+    "cfg_rounds_locked_note": "Manchen, Max pro Manche an Finaleinzuch ginn no der Konfiguratioun gespaart."
   }
 }

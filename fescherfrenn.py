@@ -23,7 +23,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "3.9"
+APP_VERSION = "3.10"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -32,6 +32,35 @@ TRANSLATIONS_FILE = "translations.json"
 CONFIG_FILE = "config.json"
 HELP_FILE = "help.json"
 SESSION_KEYS = ["manche1", "manche2", "manche3", "final"]
+MAX_ROUNDS = 12  # generous upper bound for the configurable round count
+
+
+def make_session_keys(num_rounds):
+    """Round keys (manche1..mancheN) followed by the final."""
+    n = max(1, int(num_rounds))
+    return [f"manche{i}" for i in range(1, n + 1)] + ["final"]
+
+
+def set_session_keys(num_rounds):
+    """Point the module-level SESSION_KEYS at the current event's shape.
+
+    The app only ever holds one event at a time, so a single global that
+    tracks the active event's round count keeps every existing SESSION_KEYS
+    reference correct without threading num_rounds through everything.
+    """
+    global SESSION_KEYS
+    SESSION_KEYS = make_session_keys(num_rounds)
+    return SESSION_KEYS
+
+
+def highest_manche_index(sessions):
+    """Largest N among 'mancheN' keys present in a sessions dict (0 if none)."""
+    hi = 0
+    if isinstance(sessions, dict):
+        for k in sessions:
+            if isinstance(k, str) and k.startswith("manche") and k[6:].isdigit():
+                hi = max(hi, int(k[6:]))
+    return hi
 
 DEFAULT_CONFIG = {
     "invoice_prefix": "FFS2010",
@@ -150,23 +179,25 @@ CONFIG = load_config()
 HELP = load_help()
 
 
-def empty_sessions():
-    return {k: {"participants": [], "catches": {}} for k in SESSION_KEYS}
+def empty_sessions(num_rounds=None):
+    keys = make_session_keys(num_rounds) if num_rounds else SESSION_KEYS
+    return {k: {"participants": [], "catches": {}} for k in keys}
 
 
-def new_event_data(lang="English"):
+def new_event_data(lang="English", num_rounds=3):
     """A fresh, fully-formed event dict.
 
     Single source of truth for a blank event so the invoice keys can never
     go missing again (a missing "invoices" key caused silent save failures
     and a runaway invoice counter in v3.3).
     """
+    set_session_keys(num_rounds)
     return {
-        "event": {}, "participants": {}, "sessions": empty_sessions(),
+        "event": {}, "participants": {}, "sessions": empty_sessions(num_rounds),
         "invoices": [], "invoice_seq_start": None, "invoice_next": None,
         "invoice_unit_price": None,
         "track_details": False,
-        "config": {"num_rounds": 3, "max_per_round": 30, "xproc": 10},
+        "config": {"num_rounds": num_rounds, "max_per_round": 30, "xproc": 10},
         "config_locked": False,
         "report_highlight": True, "report_highlight_colour": "green",
         "lang": lang, "version": APP_VERSION,
@@ -193,6 +224,16 @@ def migrate_data(data):
     is_v1 = "catches" in data
     flat_catches = data.pop("catches", None)
 
+    # Determine the round count BEFORE touching sessions. Source of truth is
+    # config.num_rounds, but never below the highest mancheN that already holds
+    # data (so an event is never silently truncated). Then point SESSION_KEYS
+    # at this event's shape for all the loops below.
+    cfg_existing = data.get("config", {}) if isinstance(data.get("config"), dict) else {}
+    declared = int(cfg_existing.get("num_rounds", 3) or 3)
+    present_hi = highest_manche_index(data.get("sessions", {}))
+    num_rounds = max(1, declared, present_hi)
+    set_session_keys(num_rounds)
+
     if "sessions" not in data or not isinstance(data["sessions"], dict):
         data["sessions"] = empty_sessions()
     for key in SESSION_KEYS:
@@ -202,6 +243,13 @@ def migrate_data(data):
         sess.setdefault("participants", [])
         sess.setdefault("catches", {})
         data["sessions"][key] = sess
+    # Drop any stray manche keys beyond the resolved count (they are guaranteed
+    # empty because present_hi already folded non-empty ones into num_rounds).
+    for key in list(data["sessions"].keys()):
+        if key not in SESSION_KEYS:
+            del data["sessions"][key]
+    # Keep the sessions dict in canonical round order (tidy JSON).
+    data["sessions"] = {k: data["sessions"][k] for k in SESSION_KEYS}
 
     if is_v1:
         # Everything from a v1.x event lived in a single session: fold it into Manche 1
@@ -239,7 +287,7 @@ def migrate_data(data):
     data.setdefault("invoice_next", None)
     data.setdefault("invoice_unit_price", None)
     cfg = data.setdefault("config", {})
-    cfg.setdefault("num_rounds", 3)
+    cfg["num_rounds"] = num_rounds   # resolved above (config vs. data present)
     cfg.setdefault("max_per_round", 30)
     cfg.setdefault("xproc", 10)
     data.setdefault("config_locked", False)
@@ -322,16 +370,23 @@ def save_data(data, event=None):
         messagebox.showerror("Error", LANGUAGES[data.get("lang", "English")]["error"])
 
 def session_display(lang):
-    return [LANGUAGES[lang]["manche_1"], LANGUAGES[lang]["manche_2"],
-            LANGUAGES[lang]["manche_3"], LANGUAGES[lang]["final"]]
+    return [key_to_display(lang, k) for k in SESSION_KEYS]
 
 
 def key_to_display(lang, key):
-    return dict(zip(SESSION_KEYS, session_display(lang))).get(key, key)
+    L = LANGUAGES[lang]
+    if key == "final":
+        return L["final"]
+    if isinstance(key, str) and key.startswith("manche") and key[6:].isdigit():
+        return L["round_label"].format(n=key[6:])
+    return key
 
 
 def display_to_key(lang, disp):
-    return dict(zip(session_display(lang), SESSION_KEYS)).get(disp, "manche1")
+    if disp == LANGUAGES[lang]["final"]:
+        return "final"
+    digits = "".join(ch for ch in str(disp) if ch.isdigit())
+    return f"manche{digits}" if digits else "manche1"
 
 
 class FishingApp:
@@ -464,13 +519,13 @@ class FishingApp:
         L = LANGUAGES[self.lang]
         stored = self.data.get("config", {"num_rounds": 3, "max_per_round": 30, "xproc": 10})
 
-        def read(widget, key, label, minimum):
+        def read(widget, key, label, minimum, maximum=None):
             if widget is None:
                 return stored.get(key)
             raw = widget.get().strip()
             try:
                 val = int(raw)
-                if val < minimum:
+                if val < minimum or (maximum is not None and val > maximum):
                     raise ValueError
                 # Normalize the display: "0004" -> "4".
                 if str(val) != raw:
@@ -481,10 +536,13 @@ class FishingApp:
                         pass
                 return val
             except ValueError:
-                messagebox.showerror("Error", L["cfg_invalid_int"].format(field=label, min=minimum))
+                hint = label if maximum is None else f"{label} (1-{maximum})"
+                messagebox.showerror("Error", L["cfg_invalid_int"].format(field=hint, min=minimum))
                 return None
 
-        num_rounds = stored.get("num_rounds", 3)  # fixed at 3 for now
+        num_rounds = read(getattr(self, "cfg_num_rounds", None), "num_rounds", L["cfg_num_rounds"], 1, MAX_ROUNDS)
+        if num_rounds is None:
+            return None
         max_per_round = read(getattr(self, "cfg_max_per_round", None), "max_per_round", L["cfg_max_per_round"], 1)
         if max_per_round is None:
             return None
@@ -492,6 +550,21 @@ class FishingApp:
         if xproc is None:
             return None
         return {"num_rounds": num_rounds, "max_per_round": max_per_round, "xproc": xproc}
+
+    def _rebuild_sessions_for_config(self):
+        """Reshape self.data['sessions'] to the current SESSION_KEYS, preserving
+        any existing per-round data and dropping rounds beyond the new count
+        (only safe while the event has no catches yet, i.e. at configure time)."""
+        old = self.data.get("sessions", {})
+        new = {}
+        for k in SESSION_KEYS:
+            sess = old.get(k, {"participants": [], "catches": {}})
+            sess.setdefault("participants", [])
+            sess.setdefault("catches", {})
+            new[k] = sess
+        self.data["sessions"] = new
+        if self.current_manche not in SESSION_KEYS:
+            self.current_manche = "manche1"
 
     def build_main_ui(self):
         L = LANGUAGES[self.lang]
@@ -549,11 +622,11 @@ class FishingApp:
                                    validate="key", validatecommand=vint)
         self.cfg_xproc.grid(row=6, column=1, pady=3, sticky="w")
         self.cfg_xproc.insert(0, str(cfg.get("xproc", 10)))
-        # num_rounds stays at 3 for now: changing the round COUNT is a separate
-        # structural change (SESSION_KEYS, rankings, reports, invoicing). The
-        # field is shown read-only so the value is visible and stored, but not
-        # yet user-editable away from 3.
-        self.cfg_num_rounds.config(state="disabled")
+        # The round count is editable until the event is configured (locked);
+        # changing it rebuilds the session set. Once locked it is frozen with
+        # the other config values.
+        if self.data.get("config_locked", False):
+            self.cfg_num_rounds.config(state="disabled")
 
         # Event-level toggle: record fish length & type.
         self.track_details_var = tk.BooleanVar(value=self.data.get("track_details", False))
@@ -1046,7 +1119,8 @@ class FishingApp:
             self.event_name.config(state="disabled")
             self.location.config(state="disabled")
             self.date.config(state="disabled")
-            for w in (getattr(self, "cfg_max_per_round", None),
+            for w in (getattr(self, "cfg_num_rounds", None),
+                      getattr(self, "cfg_max_per_round", None),
                       getattr(self, "cfg_xproc", None),
                       getattr(self, "track_chk", None)):
                 if w is not None:
@@ -1349,8 +1423,16 @@ class FishingApp:
                 return
             self.data["config"] = cfg
             self.data["config_locked"] = True
-            # Persist the (now frozen) event + config and lock the widgets.
+            # Apply the (possibly changed) round count: point SESSION_KEYS at
+            # the new shape and rebuild the sessions dict to match. Safe here
+            # because no catches exist yet - the roster is assigned afterwards.
+            set_session_keys(cfg["num_rounds"])
+            self._rebuild_sessions_for_config()
+            # Persist the (now frozen) event + config and lock the widgets, then
+            # refresh the main screen so the round dropdown reflects the count.
             self.update_event()
+            self.build_main_ui()
+            return self.open_participants_manager()
         if not self.check_event_details():
             return
         self.update_event()  # lock event details once we touch the roster
