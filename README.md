@@ -10,7 +10,7 @@ operated by non-technical users during a live event.
 
 - **Languages:** English, French, German, Luxembourgish (invoices are French)
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 3.10
+- **Version:** 3.11
 - **License:** MIT
 
 ---
@@ -81,7 +81,7 @@ Linux you may need `sudo apt install python3-tk`.
 ## Building the executables
 
 Builds are produced automatically by GitHub Actions
-(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.10`
+(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.11`
 builds the Windows `.exe` and macOS `.app` and drafts a release with both
 attached. The workflow bundles `config.json` and `help.json` already; if you
 keep `watermark.png` and `logo.icns` in the repo, add them to the workflow's
@@ -138,6 +138,27 @@ Output naming:
 ---
 
 ## Changelog
+
+### v3.11
+- Pop-ups and panels now open at a stable, centred position over the main
+  window. Previously a dialog (e.g. the participant editor) could drift to a
+  different part of the screen depending on the window behind it.
+- Invoices: the header/footer colour is configurable in Settings (same
+  palette as the report highlight colours, plus "No colour"), applied to both
+  banners, with dark text for readability. Cross-event (config.json).
+- Invalid keystrokes (e.g. a dot in an integer-only field) now give a short
+  system beep, app-wide.
+- Event configuration: the round-count and max-participants fields show a
+  small remark with the current app-wide ceiling from Settings.
+- New Settings value: maximum participants per round (default 100, capped at
+  999), mirroring the maximum-rounds ceiling. The per-event field blocks
+  anything above it as you type.
+- New Settings section "Report & event defaults": set the starting value for
+  new events of Record fish length & type, Highlight finalists (and its
+  colour), Generate individual reports, and Combined ranking. The combined
+  ranking default is only enabled when individual reports default is on.
+
+
 
 ### v3.10.2 (configurable round ceiling)
 - New "Competition defaults" setting: the maximum number of rounds an event

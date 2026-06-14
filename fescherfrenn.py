@@ -23,7 +23,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "3.10"
+APP_VERSION = "3.11"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -34,6 +34,8 @@ HELP_FILE = "help.json"
 SESSION_KEYS = ["manche1", "manche2", "manche3", "final"]
 DEFAULT_MAX_ROUNDS = 12      # default app-wide ceiling for an event's rounds
 ROUND_CEILING_HARD_MAX = 99  # absolute safety cap (guards against typos)
+DEFAULT_MAX_PARTICIPANTS = 100   # default app-wide ceiling for per-round roster
+PARTICIPANTS_CEILING_HARD_MAX = 999
 
 
 def round_ceiling():
@@ -44,6 +46,16 @@ def round_ceiling():
     except (TypeError, ValueError):
         val = DEFAULT_MAX_ROUNDS
     return max(1, min(val, ROUND_CEILING_HARD_MAX))
+
+
+def participants_ceiling():
+    """App-wide maximum for max-participants-per-round (Settings/config),
+    clamped to 1..999."""
+    try:
+        val = int(CONFIG.get("max_participants_count", DEFAULT_MAX_PARTICIPANTS))
+    except (TypeError, ValueError):
+        val = DEFAULT_MAX_PARTICIPANTS
+    return max(1, min(val, PARTICIPANTS_CEILING_HARD_MAX))
 
 
 def make_session_keys(num_rounds):
@@ -89,7 +101,15 @@ DEFAULT_CONFIG = {
     "bank_name": "Banque Raiffeisen",
     "iban_groups": ["CCRA", "LU85", "0090", "0000", "0597", "1635"],
     "payment_terms_days": 30,
-    "max_round_count": 12,   # app-wide ceiling for an event's configurable rounds
+    "max_round_count": 12,        # app-wide ceiling for an event's configurable rounds
+    "max_participants_count": 100,  # app-wide ceiling for max participants/round
+    "invoice_banner_colour": "blue",  # header/footer tint (palette + "none")
+    # Per-event defaults for new events (seeded to current behaviour):
+    "default_track_details": False,
+    "default_report_highlight": True,
+    "default_report_highlight_colour": "green",
+    "default_individual_reports": False,
+    "default_combined_ranking": False,
 }
 
 
@@ -208,10 +228,11 @@ def new_event_data(lang="English", num_rounds=3):
         "event": {}, "participants": {}, "sessions": empty_sessions(num_rounds),
         "invoices": [], "invoice_seq_start": None, "invoice_next": None,
         "invoice_unit_price": None,
-        "track_details": False,
+        "track_details": bool(CONFIG.get("default_track_details", False)),
         "config": {"num_rounds": num_rounds, "max_per_round": 30, "xproc": 10},
         "config_locked": False,
-        "report_highlight": True, "report_highlight_colour": "green",
+        "report_highlight": bool(CONFIG.get("default_report_highlight", True)),
+        "report_highlight_colour": CONFIG.get("default_report_highlight_colour", "green"),
         "lang": lang, "version": APP_VERSION,
     }
 
@@ -442,8 +463,9 @@ class FishingApp:
             self.catch_name_var = None
             self.report_btn = None
             # Report settings: which sections to include in the generated PDF.
-            self.include_individual_var = tk.BooleanVar(value=False)
-            self.include_combined_var = tk.BooleanVar(value=False)
+            # Initial state comes from the app-wide defaults (Settings).
+            self.include_individual_var = tk.BooleanVar(value=bool(CONFIG.get("default_individual_reports", False)))
+            self.include_combined_var = tk.BooleanVar(value=bool(CONFIG.get("default_combined_ranking", False)))
             self.combined_chk = None
             self.highlight_chk = None
             self.highlight_colour_combo = None
@@ -499,17 +521,55 @@ class FishingApp:
         self.lang_frame.grid_forget()
         self.build_main_ui()
 
+    def _reject_input(self):
+        """Give an audible cue and reject a keystroke (used by validators)."""
+        try:
+            self.root.bell()
+        except Exception:
+            pass
+        return False
+
+    def _center(self, win, w, h, parent=None):
+        """Place a Toplevel at an explicit, stable position centred over its
+        parent (falling back to the screen). Without an explicit +x+y, window
+        managers position dialogs unpredictably - e.g. shifting as the window
+        behind them grows - which is the cause of pop-ups 'wandering'."""
+        x = y = None
+        try:
+            win.update_idletasks()
+            ref = parent or self.root
+            pw, ph = ref.winfo_width(), ref.winfo_height()
+            if pw > 1 and ph > 1:
+                x = ref.winfo_rootx() + (pw - w) // 2
+                y = ref.winfo_rooty() + max(0, (ph - h) // 3)
+        except Exception:
+            x = None
+        if x is None:
+            try:
+                sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+            except Exception:
+                sw, sh = 1280, 800
+            x, y = (sw - w) // 2, (sh - h) // 3
+        try:
+            win.geometry(f"{w}x{h}+{max(0, int(x))}+{max(0, int(y))}")
+        except Exception:
+            win.geometry(f"{w}x{h}")
+
     def validate_number(self, input_str):
         if input_str == "":
             return True
         if self.lang in ["French", "German", "Luxembourgish"]:
             input_str = input_str.replace(",", ".")
-        return bool(re.match(r"^\d*\.?\d*$", input_str))
+        if not re.match(r"^\d*\.?\d*$", input_str):
+            return self._reject_input()
+        return True
 
     def validate_catches(self, input_str):
         if input_str == "":
             return True
-        return bool(re.match(r"^\d+$", input_str))
+        if not re.match(r"^\d+$", input_str):
+            return self._reject_input()
+        return True
 
     def validate_round_count(self, input_str):
         """Round count typing: digits only, and never above the app-wide
@@ -518,20 +578,41 @@ class FishingApp:
         configure. Length is implicitly bounded since the ceiling is <= 99."""
         if input_str == "":
             return True
-        if not input_str.isdigit():
-            return False
-        return int(input_str) <= round_ceiling()
+        if not input_str.isdigit() or int(input_str) > round_ceiling():
+            return self._reject_input()
+        return True
 
     def validate_round_ceiling(self, input_str):
         """Settings field for the round ceiling: digits only, 0..99 while
         typing (>=1 enforced on save)."""
         if input_str == "":
             return True
-        return input_str.isdigit() and int(input_str) <= ROUND_CEILING_HARD_MAX
+        if not (input_str.isdigit() and int(input_str) <= ROUND_CEILING_HARD_MAX):
+            return self._reject_input()
+        return True
+
+    def validate_participants_count(self, input_str):
+        """Max-participants-per-round typing: digits only, never above the
+        app-wide participants ceiling (Settings)."""
+        if input_str == "":
+            return True
+        if not input_str.isdigit() or int(input_str) > participants_ceiling():
+            return self._reject_input()
+        return True
+
+    def validate_participants_ceiling(self, input_str):
+        """Settings field for the participants ceiling: digits only, 0..999."""
+        if input_str == "":
+            return True
+        if not (input_str.isdigit() and int(input_str) <= PARTICIPANTS_CEILING_HARD_MAX):
+            return self._reject_input()
+        return True
 
     def validate_length(self, input_str):
         """Validate input length for club and remark (max 64 chars)."""
-        return len(input_str) <= 64
+        if len(input_str) > 64:
+            return self._reject_input()
+        return True
 
     def check_event_details(self):
         if not self.event_name.get().strip() or not self.location.get().strip():
@@ -573,7 +654,7 @@ class FishingApp:
         num_rounds = read(getattr(self, "cfg_num_rounds", None), "num_rounds", L["cfg_num_rounds"], 1, round_ceiling())
         if num_rounds is None:
             return None
-        max_per_round = read(getattr(self, "cfg_max_per_round", None), "max_per_round", L["cfg_max_per_round"], 1)
+        max_per_round = read(getattr(self, "cfg_max_per_round", None), "max_per_round", L["cfg_max_per_round"], 1, participants_ceiling())
         if max_per_round is None:
             return None
         xproc = read(getattr(self, "cfg_xproc", None), "xproc", L["cfg_xproc"], 1)
@@ -637,16 +718,27 @@ class FishingApp:
         # -- Event configuration (Group A) --------------------------------
         cfg = self.data.get("config", {})
         vrounds = (self.root.register(self.validate_round_count), "%P")
+        vparts = (self.root.register(self.validate_participants_count), "%P")
         vint = (self.root.register(self.validate_catches), "%P")  # digits only
         ttk.Label(event_frame, text=L["cfg_num_rounds"], font=("Arial", self.font_size)).grid(row=4, column=0, pady=3, sticky="w")
-        self.cfg_num_rounds = ttk.Entry(event_frame, font=("Arial", self.font_size), width=6,
+        nr_frame = ttk.Frame(event_frame)
+        nr_frame.grid(row=4, column=1, pady=3, sticky="w")
+        self.cfg_num_rounds = ttk.Entry(nr_frame, font=("Arial", self.font_size), width=6,
                                         validate="key", validatecommand=vrounds)
-        self.cfg_num_rounds.grid(row=4, column=1, pady=3, sticky="w")
+        self.cfg_num_rounds.pack(side="left")
+        self.cfg_rounds_remark = ttk.Label(nr_frame, text=L["cfg_max_remark"].format(n=round_ceiling()),
+                                           font=("Arial", max(8, self.font_size - 2)), foreground="#666")
+        self.cfg_rounds_remark.pack(side="left", padx=(6, 0))
         self.cfg_num_rounds.insert(0, str(cfg.get("num_rounds", 3)))
         ttk.Label(event_frame, text=L["cfg_max_per_round"], font=("Arial", self.font_size)).grid(row=5, column=0, pady=3, sticky="w")
-        self.cfg_max_per_round = ttk.Entry(event_frame, font=("Arial", self.font_size), width=6,
-                                           validate="key", validatecommand=vint)
-        self.cfg_max_per_round.grid(row=5, column=1, pady=3, sticky="w")
+        mp_frame = ttk.Frame(event_frame)
+        mp_frame.grid(row=5, column=1, pady=3, sticky="w")
+        self.cfg_max_per_round = ttk.Entry(mp_frame, font=("Arial", self.font_size), width=6,
+                                           validate="key", validatecommand=vparts)
+        self.cfg_max_per_round.pack(side="left")
+        self.cfg_parts_remark = ttk.Label(mp_frame, text=L["cfg_max_remark"].format(n=participants_ceiling()),
+                                          font=("Arial", max(8, self.font_size - 2)), foreground="#666")
+        self.cfg_parts_remark.pack(side="left", padx=(6, 0))
         self.cfg_max_per_round.insert(0, str(cfg.get("max_per_round", 30)))
         ttk.Label(event_frame, text=L["cfg_xproc"], font=("Arial", self.font_size)).grid(row=6, column=0, pady=3, sticky="w")
         self.cfg_xproc = ttk.Entry(event_frame, font=("Arial", self.font_size), width=6,
@@ -997,7 +1089,7 @@ class FishingApp:
         win = Toplevel(self.root)
         win.title(L["help"])
         win.transient(self.root)
-        win.geometry("900x560")
+        self._center(win, 900, 560)
         self._register_panel(win)
 
         outer = ttk.Frame(win, padding=8)
@@ -1480,7 +1572,7 @@ class FishingApp:
         win.transient(self.root)
         win.update_idletasks()  # macOS: ensure window is mapped before grabbing
         win.grab_set()
-        win.geometry("980x560")
+        self._center(win, 980, 560)
         self._register_panel(win)
 
         close_bar = ttk.Frame(win)
@@ -1670,7 +1762,7 @@ class FishingApp:
         dlg.title(L["edit_participant"] if edit_name else L["add_participant"])
         dlg.transient(parent)
         dlg.grab_set()
-        dlg.geometry("440x320")
+        self._center(dlg, 440, 320)
 
         frame = ttk.Frame(dlg, padding=12)
         frame.pack(fill="both", expand=True)
@@ -1757,7 +1849,7 @@ class FishingApp:
         win.transient(self.root)
         win.update_idletasks()  # macOS: ensure window is mapped before grabbing
         win.grab_set()
-        win.geometry("820x480")
+        self._center(win, 820, 480)
 
         frame = ttk.Frame(win, padding=10)
         frame.pack(fill="both", expand=True)
@@ -1840,7 +1932,7 @@ class FishingApp:
         dlg.title(L["edit_catch"])
         dlg.transient(parent)
         dlg.grab_set()
-        dlg.geometry("420x320")
+        self._center(dlg, 420, 320)
 
         frame = ttk.Frame(dlg, padding=12)
         frame.pack(fill="both", expand=True)
@@ -2111,7 +2203,7 @@ class FishingApp:
         win.transient(self.root)
         win.update_idletasks()  # macOS: ensure window is mapped before grabbing
         win.grab_set()
-        win.geometry("840x440")
+        self._center(win, 840, 440)
         self._register_panel(win)
 
         outer = ttk.Frame(win, padding=10)
@@ -2331,7 +2423,7 @@ class FishingApp:
         dlg = Toplevel(self.root)
         dlg.title(L["edit_invoice"] if editing else L["new_invoice"])
         dlg.transient(self.root)
-        dlg.geometry("540x620")
+        self._center(dlg, 540, 620)
         self._register_panel(dlg)
         # NOTE: no grab_set() on this form, and no Toplevel-level ButtonPress
         # bindings either. Both have been tried and both break the tkcalendar
@@ -2668,6 +2760,18 @@ class FishingApp:
     INV_BLUE_BOTTOM = (75 / 255, 95 / 255, 170 / 255)
     INV_TEXT_DARK = (35 / 255, 35 / 255, 40 / 255)
 
+    def _invoice_banner(self):
+        """(fill_rgb_or_None, text_rgb) for the invoice header/footer banner.
+
+        Uses the same palette as the report highlight colours; "none" draws no
+        banner (white) with dark text. The palette tints are light, so banner
+        text is always dark for readability."""
+        key = CONFIG.get("invoice_banner_colour", "blue")
+        if key == "none":
+            return None, self.INV_TEXT_DARK
+        rgb = self.REPORT_HIGHLIGHT_COLOURS.get(key, self.REPORT_HIGHLIGHT_COLOURS["blue"])
+        return rgb, self.INV_TEXT_DARK
+
     LEGAL_SUFFIXES = (" a.s.b.l.", " a.s.b.l", " A.S.B.L.", " A.S.B.L",
                       " ASBL", " S.A.", " S.A", " S.\u00e0 r.l.", " S.\u00e0r.l.",
                       " s.\u00e0 r.l.", " s.\u00e0r.l.", " GmbH", " AG")
@@ -2744,11 +2848,13 @@ class FishingApp:
                     c.restoreState()
                 except Exception as exc:
                     logging.warning(f"Watermark draw failed: {exc}")
-            # --- top blue banner ---
+            # --- top banner (colour from Settings; dark text on light tint) ---
             banner_h = 180
-            c.setFillColorRGB(*self.INV_BLUE_TOP)
-            c.rect(0, H - banner_h, W, banner_h, stroke=0, fill=1)
-            c.setFillColorRGB(1, 1, 1)
+            banner_fill, banner_text = self._invoice_banner()
+            if banner_fill is not None:
+                c.setFillColorRGB(*banner_fill)
+                c.rect(0, H - banner_h, W, banner_h, stroke=0, fill=1)
+            c.setFillColorRGB(*banner_text)
             c.setFont("Helvetica-Bold", 70)
             c.drawString(40, H - banner_h + 60, "FACTURE")
             c.setFont("Helvetica", 12)
@@ -2794,9 +2900,11 @@ class FishingApp:
 
         def draw_footer():
             foot_h = 160
-            c.setFillColorRGB(*self.INV_BLUE_BOTTOM)
-            c.rect(0, 0, W, foot_h, stroke=0, fill=1)
-            c.setFillColorRGB(1, 1, 1)
+            banner_fill, banner_text = self._invoice_banner()
+            if banner_fill is not None:
+                c.setFillColorRGB(*banner_fill)
+                c.rect(0, 0, W, foot_h, stroke=0, fill=1)
+            c.setFillColorRGB(*banner_text)
             header_y = foot_h - 28
             line_step = 16
             content_y = header_y - 30
@@ -3032,7 +3140,7 @@ class FishingApp:
         dlg.transient(self.root)
         dlg.update_idletasks()  # macOS: ensure window is mapped before grabbing
         dlg.grab_set()
-        dlg.geometry("640x680")
+        self._center(dlg, 640, 680)
         dlg.minsize(560, 480)
         dlg.resizable(True, True)
         self._register_panel(dlg)
@@ -3108,6 +3216,23 @@ class FishingApp:
         ]:
             add_row(sec1, k, L[lk])
 
+        # Invoice header/footer colour (same palette as the report highlight
+        # colours, plus "No colour" first). Applies on the next PDF generated.
+        _bc_row = sec1.grid_size()[1]
+        ttk.Label(sec1, text=L["settings_field_banner_colour"], font=("Arial", self.font_size)).grid(
+            row=_bc_row, column=0, sticky="w", pady=3, padx=(0, 8))
+        banner_labels = [(L["colour_none"], "none"), (L["col_green"], "green"),
+                         (L["col_yellow"], "yellow"), (L["col_blue"], "blue"),
+                         (L["col_grey"], "grey"), (L["col_red"], "red")]
+        banner_label_to_key = {lbl: key for lbl, key in banner_labels}
+        banner_key_to_label = {key: lbl for lbl, key in banner_labels}
+        banner_combo = ttk.Combobox(sec1, state="readonly", width=12,
+                                    values=[lbl for lbl, _ in banner_labels],
+                                    font=("Arial", self.font_size))
+        banner_combo.grid(row=_bc_row, column=1, sticky="w", pady=3)
+        banner_combo.set(banner_key_to_label.get(CONFIG.get("invoice_banner_colour", "blue"),
+                                                 banner_key_to_label["blue"]))
+
         sec2 = ttk.LabelFrame(body, text=L["settings_bank_section"], padding=8)
         sec2.grid(row=1, column=0, columnspan=2, sticky="ew")
         sec2.columnconfigure(1, weight=1)
@@ -3169,8 +3294,11 @@ class FishingApp:
         make_asset_row(1, "logo", "asset_logo")
         make_asset_row(2, "watermark", "asset_watermark")
         make_asset_row(3, "icon", "asset_icon")
+        ttk.Label(sec3, text=L["settings_branding_restart_note"],
+                  font=("Arial", max(8, self.font_size - 3)), foreground="#888", wraplength=520, justify="left").grid(
+                      row=4, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
-        # -- Competition defaults (app-wide) --
+        # -- Competition / report defaults (app-wide) --
         sec4 = ttk.LabelFrame(body, text=L["settings_general_section"], padding=8)
         sec4.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         sec4.columnconfigure(1, weight=1)
@@ -3181,6 +3309,49 @@ class FishingApp:
                                      validatecommand=(self.root.register(self.validate_round_ceiling), "%P"))
         max_rounds_entry.grid(row=0, column=1, sticky="w")
         max_rounds_entry.insert(0, str(CONFIG.get("max_round_count", DEFAULT_MAX_ROUNDS)))
+
+        ttk.Label(sec4, text=L["settings_field_max_participants"], font=("Arial", self.font_size)).grid(
+            row=1, column=0, sticky="w", pady=3, padx=(0, 8))
+        max_parts_entry = ttk.Entry(sec4, font=("Arial", self.font_size), width=6,
+                                    validate="key",
+                                    validatecommand=(self.root.register(self.validate_participants_ceiling), "%P"))
+        max_parts_entry.grid(row=1, column=1, sticky="w")
+        max_parts_entry.insert(0, str(CONFIG.get("max_participants_count", DEFAULT_MAX_PARTICIPANTS)))
+
+        # -- New-event defaults (seeded to current behaviour) --
+        sec5 = ttk.LabelFrame(body, text=L["settings_defaults_section"], padding=8)
+        sec5.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        def_track = tk.BooleanVar(value=bool(CONFIG.get("default_track_details", False)))
+        def_highlight = tk.BooleanVar(value=bool(CONFIG.get("default_report_highlight", True)))
+        def_individual = tk.BooleanVar(value=bool(CONFIG.get("default_individual_reports", False)))
+        def_combined = tk.BooleanVar(value=bool(CONFIG.get("default_combined_ranking", False)))
+        ttk.Checkbutton(sec5, text=L["settings_default_track"], variable=def_track).pack(anchor="w", pady=1)
+        ttk.Checkbutton(sec5, text=L["settings_default_highlight"], variable=def_highlight).pack(anchor="w", pady=1)
+        # Individual/combined report toggles are read once at start-up, so a
+        # change here takes effect on the next launch (the others apply to the
+        # next new event). Flag that with a small remark.
+        _restart = f'  ({L["settings_restart_note"]})'
+        indiv_row = ttk.Frame(sec5)
+        indiv_row.pack(anchor="w", pady=1, fill="x")
+        ttk.Checkbutton(indiv_row, text=L["settings_default_individual"], variable=def_individual).pack(side="left")
+        ttk.Label(indiv_row, text=_restart, font=("Arial", max(8, self.font_size - 2)),
+                  foreground="#888").pack(side="left")
+        comb_row = ttk.Frame(sec5)
+        comb_row.pack(anchor="w", pady=1, fill="x")
+        combined_default_chk = ttk.Checkbutton(comb_row, text=L["settings_default_combined"], variable=def_combined)
+        combined_default_chk.pack(side="left")
+        ttk.Label(comb_row, text=_restart, font=("Arial", max(8, self.font_size - 2)),
+                  foreground="#888").pack(side="left")
+
+        def _sync_combined_default(*_a):
+            # Combined ranking only applies when individual reports are on.
+            if def_individual.get():
+                combined_default_chk.state(["!disabled"])
+            else:
+                def_combined.set(False)
+                combined_default_chk.state(["disabled"])
+        def_individual.trace_add("write", _sync_combined_default)
+        _sync_combined_default()
 
         def do_save():
             new_cfg = dict(CONFIG)
@@ -3223,6 +3394,19 @@ class FishingApp:
             except ValueError:
                 mrc = DEFAULT_MAX_ROUNDS
             new_cfg["max_round_count"] = max(1, min(mrc, ROUND_CEILING_HARD_MAX))
+            # max participants/round (app-wide ceiling) -> int, clamped 1..999
+            try:
+                mpc = int(max_parts_entry.get().strip())
+            except ValueError:
+                mpc = DEFAULT_MAX_PARTICIPANTS
+            new_cfg["max_participants_count"] = max(1, min(mpc, PARTICIPANTS_CEILING_HARD_MAX))
+            # invoice header/footer colour
+            new_cfg["invoice_banner_colour"] = banner_label_to_key.get(banner_combo.get(), "blue")
+            # new-event defaults
+            new_cfg["default_track_details"] = bool(def_track.get())
+            new_cfg["default_report_highlight"] = bool(def_highlight.get())
+            new_cfg["default_individual_reports"] = bool(def_individual.get())
+            new_cfg["default_combined_ranking"] = bool(def_combined.get() and def_individual.get())
             if save_config(new_cfg):
                 messagebox.showinfo("", L["settings_saved"])
                 dlg.destroy()
@@ -3598,7 +3782,7 @@ class FishingApp:
         win.transient(self.root)
         win.update_idletasks()
         win.grab_set()
-        win.geometry("560x380")
+        self._center(win, 560, 380)
         self._register_panel(win)
 
         outer = ttk.Frame(win, padding=10)
@@ -3648,7 +3832,7 @@ class FishingApp:
         text_length = len(message)
         width = max(300, min(600, text_length * 8))
         height = max(150, 100 + (text_length // 50) * 30)
-        dialog.geometry(f"{int(width)}x{int(height)}")
+        self._center(dialog, int(width), int(height))
 
         label = ttk.Label(dialog, text=message, wraplength=width-20, font=("Arial", self.font_size))
         label.pack(pady=10, padx=10)
@@ -3808,7 +3992,7 @@ class FishingApp:
         top.transient(parent)
         top.update_idletasks()
         top.grab_set()
-        top.geometry("440x180")
+        self._center(top, 440, 180)
         frame = ttk.Frame(top, padding=12)
         frame.pack(fill="both", expand=True)
         ttk.Label(frame, text=message, wraplength=400, justify="left").pack(anchor="w", pady=(0, 8))
@@ -3850,7 +4034,7 @@ class FishingApp:
         win.transient(self.root)
         win.update_idletasks()
         win.grab_set()
-        win.geometry("720x440")
+        self._center(win, 720, 440)
         self._register_panel(win)
 
         outer = ttk.Frame(win, padding=10)
@@ -4027,7 +4211,7 @@ class FishingApp:
         top.transient(parent)
         top.update_idletasks()
         top.grab_set()
-        top.geometry("420x380")
+        self._center(top, 420, 380)
         frame = ttk.Frame(top, padding=12)
         frame.pack(fill="both", expand=True)
         ttk.Label(frame, wraplength=380, justify="left",
