@@ -10,7 +10,7 @@ operated by non-technical users during a live event.
 
 - **Languages:** English, French, German, Luxembourgish (invoices are French)
 - **Platform:** Windows (primary), also runs on macOS and Linux from source
-- **Version:** 3.11
+- **Version:** 4.0
 - **License:** MIT
 
 ---
@@ -81,7 +81,7 @@ Linux you may need `sudo apt install python3-tk`.
 ## Building the executables
 
 Builds are produced automatically by GitHub Actions
-(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v3.11`
+(`.github/workflows/FF-build-release.yml`). Pushing a tag such as `v4.0`
 builds the Windows `.exe` and macOS `.app` and drafts a release with both
 attached. The workflow bundles `config.json` and `help.json` already; if you
 keep `watermark.png` and `logo.icns` in the repo, add them to the workflow's
@@ -138,6 +138,28 @@ Output naming:
 ---
 
 ## Changelog
+
+### v4.0 (paged interface - step 1)
+- The main screen is reorganised from a single two-column view into five
+  pages reached by a fixed navigation bar at the bottom of the window:
+  Event, Log Catch, Participants, Rankings, and Settings & Tools. This is the
+  groundwork for the planned tablet layout.
+  - Event: event name/location/date, configuration (rounds, max per round,
+    proceed-to-final), length/type toggle, Manage Participants, and the
+    event actions (Reset, Export, Events, Invoices).
+  - Log Catch: the round selector, the catch entry form, and the list of
+    participants in the current round.
+  - Participants: opens the participant manager (full in-page management
+    arrives in a later step).
+  - Rankings: live and overall rankings, report options, and Generate /
+    Open reports.
+  - Settings & Tools: Settings, Help and Close.
+- The startup language chooser is unchanged; picking a language opens the
+  paged interface.
+- No change to data, invoices, reports, or any calculation - this step only
+  reorganises how the existing screen is laid out.
+
+
 
 ### v3.11
 - Pop-ups and panels now open at a stable, centred position over the main

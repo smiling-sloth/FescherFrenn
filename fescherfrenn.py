@@ -23,7 +23,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "3.11"
+APP_VERSION = "4.0"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -483,11 +483,21 @@ class FishingApp:
             self.scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=self.canvas.yview)
             self.main_frame = ttk.Frame(self.canvas)
             self.canvas.configure(yscrollcommand=self.scrollbar.set)
+            # Fixed bottom navigation bar (outside the scroll area so it never
+            # scrolls away). Populated per-language in build_main_ui.
+            self.nav_bar = ttk.Frame(self.root, padding=(4, 4))
+            self.nav_bar.pack(side="bottom", fill="x")
             self.canvas.pack(side="left", fill="both", expand=True)
             self.scrollbar.pack(side="right", fill="y")
             self.canvas_frame = self.canvas.create_window((0, 0), window=self.main_frame, anchor="nw")
             self.main_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
             self.root.bind("<Configure>", self.on_resize)
+
+            # Paged UI: page frames live in a container; the bottom nav raises
+            # one at a time. Populated in build_main_ui.
+            self.pages = {}
+            self.nav_buttons = {}
+            self.current_page = "event"
 
             try:
                 self.logo = tk.PhotoImage(file="logo.png")
@@ -518,7 +528,10 @@ class FishingApp:
         self.lang = lang
         self.data["lang"] = lang
         self.root.title(LANGUAGES[self.lang]["title"])
-        self.lang_frame.grid_forget()
+        try:
+            self.lang_frame.grid_forget()
+        except Exception:
+            pass
         self.build_main_ui()
 
     def _reject_input(self):
@@ -678,258 +691,46 @@ class FishingApp:
             self.current_manche = "manche1"
 
     def build_main_ui(self):
+        """Build the paged main screen: a header (logo), a page container whose
+        pages are switched by the fixed bottom nav bar, and a footer."""
         L = LANGUAGES[self.lang]
         for widget in self.main_frame.winfo_children():
             if widget != self.logo_label:
                 widget.destroy()
 
-        self.main_frame.columnconfigure(0, weight=1, minsize=430)
-        self.main_frame.columnconfigure(1, weight=2, minsize=560)
-        self.main_frame.rowconfigure(0, weight=0)
-        self.main_frame.rowconfigure(1, weight=1)
-        self.main_frame.rowconfigure(2, weight=0)
+        self.main_frame.columnconfigure(0, weight=0)   # logo
+        self.main_frame.columnconfigure(1, weight=1)   # header-right cluster
+        self.main_frame.rowconfigure(0, weight=0)   # header (logo + help/close)
+        self.main_frame.rowconfigure(1, weight=1)   # page container
+        self.main_frame.rowconfigure(2, weight=0)   # footer
+        self.logo_label.grid(row=0, column=0, pady=5, padx=5, sticky="nw")
 
-        left_frame = ttk.Frame(self.main_frame)
-        left_frame.grid(row=1, column=0, sticky="nsew", padx=3, pady=3)
-
-        # -- Event details + round selector --
-        event_frame = ttk.LabelFrame(left_frame, text=L["event_details"], padding=5)
-        event_frame.pack(fill="x")
-        event_frame.columnconfigure(1, weight=1)
-        ttk.Label(event_frame, text=L["event_name"], font=("Arial", self.font_size)).grid(row=0, column=0, pady=3, sticky="w")
-        self.event_name = ttk.Entry(event_frame, font=("Arial", self.font_size), width=22)
-        self.event_name.grid(row=0, column=1, pady=3, sticky="ew")
-        ttk.Label(event_frame, text=L["location"], font=("Arial", self.font_size)).grid(row=1, column=0, pady=3, sticky="w")
-        self.location = ttk.Entry(event_frame, font=("Arial", self.font_size), width=22)
-        self.location.grid(row=1, column=1, pady=3, sticky="ew")
-        ttk.Label(event_frame, text=L["date"], font=("Arial", self.font_size)).grid(row=2, column=0, pady=3, sticky="w")
-        self.date = DateEntry(event_frame, font=("Arial", self.font_size), date_pattern="dd/mm/yyyy", width=12)
-        self.date.grid(row=2, column=1, pady=3, sticky="w")
-        self.date.set_date(datetime.now())
-        ttk.Label(event_frame, text=L["manche_label"], font=("Arial", self.font_size)).grid(row=3, column=0, pady=3, sticky="w")
-        self.manche_var = tk.StringVar()
-        self.manche_combo = ttk.Combobox(event_frame, textvariable=self.manche_var, state="readonly",
-                                         values=session_display(self.lang),
-                                         font=("Arial", self.font_size), width=18)
-        self.manche_combo.grid(row=3, column=1, pady=3, sticky="w")
-        self.manche_combo.set(key_to_display(self.lang, self.current_manche))
-        self.manche_combo.bind("<<ComboboxSelected>>", self.on_manche_changed)
-
-        # -- Event configuration (Group A) --------------------------------
-        cfg = self.data.get("config", {})
-        vrounds = (self.root.register(self.validate_round_count), "%P")
-        vparts = (self.root.register(self.validate_participants_count), "%P")
-        vint = (self.root.register(self.validate_catches), "%P")  # digits only
-        ttk.Label(event_frame, text=L["cfg_num_rounds"], font=("Arial", self.font_size)).grid(row=4, column=0, pady=3, sticky="w")
-        nr_frame = ttk.Frame(event_frame)
-        nr_frame.grid(row=4, column=1, pady=3, sticky="w")
-        self.cfg_num_rounds = ttk.Entry(nr_frame, font=("Arial", self.font_size), width=6,
-                                        validate="key", validatecommand=vrounds)
-        self.cfg_num_rounds.pack(side="left")
-        self.cfg_rounds_remark = ttk.Label(nr_frame, text=L["cfg_max_remark"].format(n=round_ceiling()),
-                                           font=("Arial", max(8, self.font_size - 2)), foreground="#666")
-        self.cfg_rounds_remark.pack(side="left", padx=(6, 0))
-        self.cfg_num_rounds.insert(0, str(cfg.get("num_rounds", 3)))
-        ttk.Label(event_frame, text=L["cfg_max_per_round"], font=("Arial", self.font_size)).grid(row=5, column=0, pady=3, sticky="w")
-        mp_frame = ttk.Frame(event_frame)
-        mp_frame.grid(row=5, column=1, pady=3, sticky="w")
-        self.cfg_max_per_round = ttk.Entry(mp_frame, font=("Arial", self.font_size), width=6,
-                                           validate="key", validatecommand=vparts)
-        self.cfg_max_per_round.pack(side="left")
-        self.cfg_parts_remark = ttk.Label(mp_frame, text=L["cfg_max_remark"].format(n=participants_ceiling()),
-                                          font=("Arial", max(8, self.font_size - 2)), foreground="#666")
-        self.cfg_parts_remark.pack(side="left", padx=(6, 0))
-        self.cfg_max_per_round.insert(0, str(cfg.get("max_per_round", 30)))
-        ttk.Label(event_frame, text=L["cfg_xproc"], font=("Arial", self.font_size)).grid(row=6, column=0, pady=3, sticky="w")
-        self.cfg_xproc = ttk.Entry(event_frame, font=("Arial", self.font_size), width=6,
-                                   validate="key", validatecommand=vint)
-        self.cfg_xproc.grid(row=6, column=1, pady=3, sticky="w")
-        self.cfg_xproc.insert(0, str(cfg.get("xproc", 10)))
-        # The round count is editable until the event is configured (locked);
-        # changing it rebuilds the session set. Once locked it is frozen with
-        # the other config values.
-        if self.data.get("config_locked", False):
-            self.cfg_num_rounds.config(state="disabled")
-
-        # Event-level toggle: record fish length & type.
-        self.track_details_var = tk.BooleanVar(value=self.data.get("track_details", False))
-        self.track_chk = ttk.Checkbutton(
-            event_frame, text=L["enable_details"], variable=self.track_details_var,
-            command=self.on_track_details_toggled)
-        self.track_chk.grid(row=7, column=0, columnspan=2, pady=(4, 2), sticky="w")
-
-        self.manage_btn = ttk.Button(event_frame, text=L["manage_participants"], command=self.open_participants_manager)
-        self.manage_btn.grid(row=8, column=0, columnspan=2, pady=(6, 2), sticky="ew")
-
-        event_locked = bool(self.data["event"])
-        if event_locked:
-            self.event_name.insert(0, self.data["event"].get("name", ""))
-            self.location.insert(0, self.data["event"].get("location", ""))
-            date_str = self.data["event"].get("date", datetime.now().strftime("%d/%m/%Y"))
-            try:
-                self.date.set_date(date_str)
-            except ValueError:
-                self.date.set_date(datetime.now())
-            self.event_name.config(state="disabled")
-            self.location.config(state="disabled")
-            self.date.config(state="disabled")
-            # Length/type policy is fixed once the event is locked.
-            self.track_chk.config(state="disabled")
-            self.cfg_max_per_round.config(state="disabled")
-            self.cfg_xproc.config(state="disabled")
-
-        # -- Log catch --
-        catch_frame = ttk.LabelFrame(left_frame, text=L["log_catch"], padding=5)
-        catch_frame.pack(fill="x", pady=6)
-        catch_frame.columnconfigure(1, weight=1)
-        ttk.Label(catch_frame, text=L["name"], font=("Arial", self.font_size)).grid(row=0, column=0, pady=3, sticky="w")
-        self.catch_name_var = tk.StringVar()
-        self.catch_name = ttk.Combobox(catch_frame, textvariable=self.catch_name_var,
-                                       values=self.catch_dropdown_values(),
-                                       font=("Arial", self.font_size), width=20)
-        self.catch_name.grid(row=0, column=1, pady=3, sticky="ew")
-        self.catch_name_var.set(L["select_participant"])
-        self.catch_name.config(foreground='grey')
-        self.catch_name.bind("<FocusIn>", self.on_combobox_focus_in)
-        self.catch_name.bind("<FocusOut>", self.on_combobox_focus_out)
-        self.catch_name.bind("<<ComboboxSelected>>", self.on_combobox_selected)
-        ttk.Label(catch_frame, text=L["fish_weight"], font=("Arial", self.font_size)).grid(row=1, column=0, pady=3, sticky="w")
-        self.fish_weight = ttk.Entry(catch_frame, font=("Arial", self.font_size), width=18, validate="key",
-                                     validatecommand=(self.root.register(self.validate_number), "%P"))
-        self.fish_weight.grid(row=1, column=1, pady=3, sticky="ew")
-        ttk.Label(catch_frame, text=L["num_catches"], font=("Arial", self.font_size)).grid(row=2, column=0, pady=3, sticky="w")
-        self.num_catches = ttk.Entry(catch_frame, font=("Arial", self.font_size), width=18, validate="key",
-                                     validatecommand=(self.root.register(self.validate_catches), "%P"))
-        self.num_catches.grid(row=2, column=1, pady=3, sticky="ew")
-        self.num_catches.insert(0, "1")
-        # When the event tracks length/type, every catch is a single fish, so the
-        # number of catches is forced to 1 and the field is locked.
-        if self.data.get("track_details", False):
-            self.num_catches.config(state="disabled")
-        self.length_label = ttk.Label(catch_frame, text=L["fish_length"], font=("Arial", self.font_size))
-        self.length_label.grid(row=3, column=0, pady=3, sticky="w")
-        self.fish_length = ttk.Entry(catch_frame, font=("Arial", self.font_size), width=18, validate="key",
-                                     validatecommand=(self.root.register(self.validate_number), "%P"))
-        self.fish_length.grid(row=3, column=1, pady=3, sticky="ew")
-        self.type_label = ttk.Label(catch_frame, text=L["fish_type"], font=("Arial", self.font_size))
-        self.type_label.grid(row=4, column=0, pady=3, sticky="w")
-        self.fish_type = ttk.Entry(catch_frame, font=("Arial", self.font_size), width=18)
-        self.fish_type.grid(row=4, column=1, pady=3, sticky="ew")
-
-        # Swapped per request: Log Catch on the left, Edit Catches on the right.
-        self.log_btn = ttk.Button(catch_frame, text=L["log_catch"], command=self.log_catch)
-        self.log_btn.grid(row=5, column=0, pady=5, sticky="w")
-        self.edit_catches_btn = ttk.Button(catch_frame, text=L["edit_catches"], command=self.open_catch_editor)
-        self.edit_catches_btn.grid(row=5, column=1, pady=5, sticky="e")
-
-        self._apply_details_enabled_state()
-
-        # -- Right column: two-panel rankings + actions + participants --
-        right_frame = ttk.Frame(self.main_frame)
-        right_frame.grid(row=0, column=1, rowspan=2, sticky="nsew", padx=3, pady=3)
-
-        rankings_outer = ttk.Frame(right_frame)
-        rankings_outer.pack(fill="both", expand=True)
-        rankings_outer.columnconfigure(0, weight=1, uniform="rk")
-        rankings_outer.columnconfigure(1, weight=1, uniform="rk")
-        rankings_outer.rowconfigure(0, weight=1)
-
-        bg = self.root.cget("background")
-        round_lf = ttk.LabelFrame(rankings_outer, text=L["live_rankings"], padding=5)
-        round_lf.grid(row=0, column=0, sticky="nsew", padx=(0, 3))
-        self.rankings = tk.Text(round_lf, width=30, height=20, relief="flat",
-                                wrap="word", state="disabled", background=bg,
-                                borderwidth=0, highlightthickness=0)
-        self.rankings.pack(fill="both", expand=True)
-        self._style_ranking_text(self.rankings)
-
-        overall_lf = ttk.LabelFrame(rankings_outer, text=L["overall_rankings"], padding=5)
-        overall_lf.grid(row=0, column=1, sticky="nsew", padx=(3, 0))
-        self.overall_rankings = tk.Text(overall_lf, width=30, height=20, relief="flat",
-                                        wrap="word", state="disabled", background=bg,
-                                        borderwidth=0, highlightthickness=0)
-        self.overall_rankings.pack(fill="both", expand=True)
-        self._style_ranking_text(self.overall_rankings)
-
-        self.refresh_rankings()
-
-        btn_frame = ttk.Frame(right_frame)
-        btn_frame.pack(fill="x", pady=3)
-        self.report_btn = ttk.Button(btn_frame, text=L["generate_report"], command=self.generate_report)
-        self.report_btn.pack(side=tk.LEFT, padx=3)
-        self.open_report_btn = ttk.Button(btn_frame, text=L["reports_btn"], command=self.open_reports_panel)
-        self.open_report_btn.pack(side=tk.LEFT, padx=3)
-        self.reset_btn = ttk.Button(btn_frame, text=L["reset_event"], command=self.reset_event)
-        self.reset_btn.pack(side=tk.LEFT, padx=3)
-        self.export_btn = ttk.Button(btn_frame, text=L["export_event"], command=self.export_event)
-        self.export_btn.pack(side=tk.LEFT, padx=3)
-        self.manage_events_btn = ttk.Button(btn_frame, text=L["events_btn"], command=self.open_manage_events_panel)
-        self.manage_events_btn.pack(side=tk.LEFT, padx=3)
-        self.invoices_btn = ttk.Button(btn_frame, text=L["invoices_btn"], command=self.open_invoices_manager)
-        self.invoices_btn.pack(side=tk.LEFT, padx=3)
-        self.settings_btn = ttk.Button(btn_frame, text=L["settings_btn"], command=self.open_settings_dialog)
-        self.settings_btn.pack(side=tk.LEFT, padx=3)
-        self.help_btn = ttk.Button(btn_frame, text=L["help"], command=self.show_help)
+        # Persistent top-right controls (same place on every page).
+        header_right = ttk.Frame(self.main_frame)
+        header_right.grid(row=0, column=1, sticky="ne", padx=6, pady=6)
+        self.help_btn = ttk.Button(header_right, text=L["help"], command=self.show_help, width=8)
         self.help_btn.pack(side=tk.LEFT, padx=3)
-        self.close_btn = ttk.Button(btn_frame, text=L["close"], command=self.on_closing)
+        self.close_btn = ttk.Button(header_right, text=L["close"], command=self.on_closing, width=8)
         self.close_btn.pack(side=tk.LEFT, padx=3)
 
-        self.manche_pf = ttk.LabelFrame(
-            right_frame,
-            text=f'{L["participants"]} - {key_to_display(self.lang, self.current_manche)}', padding=5)
-        self.manche_pf.pack(fill="x", pady=3)
-        participants_canvas = tk.Canvas(self.manche_pf, height=160)
-        participants_scrollbar = ttk.Scrollbar(self.manche_pf, orient="vertical", command=participants_canvas.yview)
-        self.manche_participants_list = tk.Text(participants_canvas, height=8, width=30,
-                                                font=("Arial", self.font_size - 2))
-        participants_canvas.configure(yscrollcommand=participants_scrollbar.set)
-        participants_scrollbar.pack(side="right", fill="y")
-        participants_canvas.pack(side="left", fill="both", expand=True)
-        participants_canvas.create_window((0, 0), window=self.manche_participants_list, anchor="nw")
-        self.manche_participants_list.bind(
-            "<Configure>", lambda e: participants_canvas.configure(scrollregion=participants_canvas.bbox("all")))
-        self.update_manche_participants_list()
+        # -- page container: all pages share one cell; nav raises one --------
+        self.page_container = ttk.Frame(self.main_frame)
+        self.page_container.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=3, pady=3)
+        self.page_container.rowconfigure(0, weight=1)
+        self.page_container.columnconfigure(0, weight=1)
+        self.pages = {}
+        for name in ("event", "catch", "participants", "rankings", "settings"):
+            f = ttk.Frame(self.page_container)
+            f.grid(row=0, column=0, sticky="nsew")
+            self.pages[name] = f
 
-        # -- Report settings --
-        settings_frame = ttk.LabelFrame(right_frame, text=L["report_settings_label"], padding=5)
-        settings_frame.pack(fill="x", pady=3)
-        ttk.Label(settings_frame, text=f'\u2713 {L["chk_event_summary"]}',
-                  font=("Arial", self.font_size - 2, "italic"), foreground="gray").pack(anchor="w", pady=2)
-        ttk.Checkbutton(settings_frame, text=L["chk_individual"],
-                        variable=self.include_individual_var).pack(anchor="w", pady=2)
-        self.combined_chk = ttk.Checkbutton(
-            settings_frame, text=L["chk_combined"], variable=self.include_combined_var)
-        self.combined_chk.pack(anchor="w", pady=2)
-        self._update_combined_state()
+        self._build_page_event(self.pages["event"])
+        self._build_page_catch(self.pages["catch"])
+        self._build_page_participants(self.pages["participants"])
+        self._build_page_rankings(self.pages["rankings"])
+        self._build_page_settings(self.pages["settings"])
 
-        # -- Finalist highlight (round reports) --
-        self.highlight_var = tk.BooleanVar(value=self.data.get("report_highlight", True))
-        def _on_highlight_toggle():
-            self.data["report_highlight"] = self.highlight_var.get()
-        self.highlight_chk = ttk.Checkbutton(settings_frame, text=L["report_highlight_label"],
-                        variable=self.highlight_var,
-                        command=_on_highlight_toggle)
-        self.highlight_chk.pack(anchor="w", pady=2)
-        colour_row = ttk.Frame(settings_frame)
-        colour_row.pack(anchor="w", pady=2, fill="x")
-        ttk.Label(colour_row, text=f'{L["report_highlight_colour"]}:',
-                  font=("Arial", self.font_size - 2)).pack(side="left")
-        self.highlight_colour_var = tk.StringVar(value=self.data.get("report_highlight_colour", "green"))
-        colour_labels = {"green": L["col_green"], "yellow": L["col_yellow"],
-                         "blue": L["col_blue"], "grey": L["col_grey"], "red": L["col_red"]}
-        self._highlight_colour_label_to_key = {v: k for k, v in colour_labels.items()}
-        self.highlight_colour_combo = ttk.Combobox(colour_row, state="readonly", width=10,
-                                    values=list(colour_labels.values()),
-                                    font=("Arial", self.font_size - 2))
-        self.highlight_colour_combo.set(colour_labels.get(self.highlight_colour_var.get(), L["col_green"]))
-        def _on_colour_pick(_e=None):
-            key = self._highlight_colour_label_to_key.get(self.highlight_colour_combo.get(), "green")
-            self.data["report_highlight_colour"] = key
-        self.highlight_colour_combo.bind("<<ComboboxSelected>>", _on_colour_pick)
-        self.highlight_colour_combo.pack(side="left", padx=6)
-        self._update_highlight_state()
-
-        # -- Footer: version bottom-left, copyright centred --
+        # -- footer: version bottom-left, copyright centred ------------------
         footer_frame = ttk.Frame(self.main_frame)
         footer_frame.grid(row=2, column=0, columnspan=2, pady=5, sticky="ew")
         footer_frame.columnconfigure(0, weight=1)
@@ -951,6 +752,9 @@ class FishingApp:
         else:
             ttk.Label(cr_holder, text=cr, font=("Arial", self.font_size - 4)).pack(side=tk.LEFT)
 
+        # -- bottom navigation + initial page -------------------------------
+        self._build_nav_bar()
+
         # -- Tooltips --
         self.create_tooltip(self.manage_btn, L["tooltip_manage"])
         self.create_tooltip(self.log_btn, L["tooltip_log"])
@@ -961,6 +765,283 @@ class FishingApp:
         self.create_tooltip(self.invoices_btn, L["tooltip_invoices"])
         self.create_tooltip(self.settings_btn, L["tooltip_settings"])
         self.create_tooltip(self.help_btn, L["tooltip_help"])
+
+        self.show_page(self.current_page if self.current_page in self.pages else "event")
+
+    # ---- bottom navigation -------------------------------------------------
+    def _build_nav_bar(self):
+        for w in self.nav_bar.winfo_children():
+            w.destroy()
+        L = LANGUAGES[self.lang]
+        items = [("event", L["nav_event"]), ("participants", L["nav_participants"]),
+                 ("catch", L["nav_catch"]), ("rankings", L["nav_rankings"]),
+                 ("settings", L["nav_settings"])]
+        self.nav_buttons = {}
+        for i, (name, label) in enumerate(items):
+            self.nav_bar.columnconfigure(i, weight=1)
+            b = tk.Button(self.nav_bar, text=label, font=("Arial", self.font_size - 1),
+                          relief="raised", padx=6, pady=8,
+                          command=lambda n=name: self.show_page(n))
+            b.grid(row=0, column=i, sticky="ew", padx=2)
+            self.nav_buttons[name] = b
+
+    def show_page(self, name):
+        """Raise the named page and reflect the active tab in the nav bar."""
+        if name not in self.pages:
+            name = "event"
+        self.current_page = name
+        self.pages[name].tkraise()
+        for n, b in self.nav_buttons.items():
+            try:
+                if n == name:
+                    b.config(relief="sunken", font=("Arial", self.font_size - 1, "bold"))
+                else:
+                    b.config(relief="raised", font=("Arial", self.font_size - 1))
+            except tk.TclError:
+                pass
+        try:
+            self.canvas.yview_moveto(0)
+        except Exception:
+            pass
+
+    # ---- page: Event -------------------------------------------------------
+    def _build_page_event(self, page):
+        L = LANGUAGES[self.lang]
+        event_frame = ttk.LabelFrame(page, text=L["event_details"], padding=5)
+        event_frame.pack(fill="x", padx=4, pady=4)
+        event_frame.columnconfigure(1, weight=1)
+        ttk.Label(event_frame, text=L["event_name"], font=("Arial", self.font_size)).grid(row=0, column=0, pady=3, sticky="w")
+        self.event_name = ttk.Entry(event_frame, font=("Arial", self.font_size), width=22)
+        self.event_name.grid(row=0, column=1, pady=3, sticky="ew")
+        ttk.Label(event_frame, text=L["location"], font=("Arial", self.font_size)).grid(row=1, column=0, pady=3, sticky="w")
+        self.location = ttk.Entry(event_frame, font=("Arial", self.font_size), width=22)
+        self.location.grid(row=1, column=1, pady=3, sticky="ew")
+        ttk.Label(event_frame, text=L["date"], font=("Arial", self.font_size)).grid(row=2, column=0, pady=3, sticky="w")
+        self.date = DateEntry(event_frame, font=("Arial", self.font_size), date_pattern="dd/mm/yyyy", width=12)
+        self.date.grid(row=2, column=1, pady=3, sticky="w")
+        self.date.set_date(datetime.now())
+
+        cfg = self.data.get("config", {})
+        vrounds = (self.root.register(self.validate_round_count), "%P")
+        vparts = (self.root.register(self.validate_participants_count), "%P")
+        vint = (self.root.register(self.validate_catches), "%P")  # digits only
+        ttk.Label(event_frame, text=L["cfg_num_rounds"], font=("Arial", self.font_size)).grid(row=3, column=0, pady=3, sticky="w")
+        nr_frame = ttk.Frame(event_frame)
+        nr_frame.grid(row=3, column=1, pady=3, sticky="w")
+        self.cfg_num_rounds = ttk.Entry(nr_frame, font=("Arial", self.font_size), width=6,
+                                        validate="key", validatecommand=vrounds)
+        self.cfg_num_rounds.pack(side="left")
+        self.cfg_rounds_remark = ttk.Label(nr_frame, text=L["cfg_max_remark"].format(n=round_ceiling()),
+                                           font=("Arial", max(8, self.font_size - 2)), foreground="#666")
+        self.cfg_rounds_remark.pack(side="left", padx=(6, 0))
+        self.cfg_num_rounds.insert(0, str(cfg.get("num_rounds", 3)))
+        ttk.Label(event_frame, text=L["cfg_max_per_round"], font=("Arial", self.font_size)).grid(row=4, column=0, pady=3, sticky="w")
+        mp_frame = ttk.Frame(event_frame)
+        mp_frame.grid(row=4, column=1, pady=3, sticky="w")
+        self.cfg_max_per_round = ttk.Entry(mp_frame, font=("Arial", self.font_size), width=6,
+                                           validate="key", validatecommand=vparts)
+        self.cfg_max_per_round.pack(side="left")
+        self.cfg_parts_remark = ttk.Label(mp_frame, text=L["cfg_max_remark"].format(n=participants_ceiling()),
+                                          font=("Arial", max(8, self.font_size - 2)), foreground="#666")
+        self.cfg_parts_remark.pack(side="left", padx=(6, 0))
+        self.cfg_max_per_round.insert(0, str(cfg.get("max_per_round", 30)))
+        ttk.Label(event_frame, text=L["cfg_xproc"], font=("Arial", self.font_size)).grid(row=5, column=0, pady=3, sticky="w")
+        self.cfg_xproc = ttk.Entry(event_frame, font=("Arial", self.font_size), width=6,
+                                   validate="key", validatecommand=vint)
+        self.cfg_xproc.grid(row=5, column=1, pady=3, sticky="w")
+        self.cfg_xproc.insert(0, str(cfg.get("xproc", 10)))
+        if self.data.get("config_locked", False):
+            self.cfg_num_rounds.config(state="disabled")
+
+        self.track_details_var = tk.BooleanVar(value=self.data.get("track_details", False))
+        self.track_chk = ttk.Checkbutton(
+            event_frame, text=L["enable_details"], variable=self.track_details_var,
+            command=self.on_track_details_toggled)
+        self.track_chk.grid(row=6, column=0, columnspan=2, pady=(4, 2), sticky="w")
+
+        event_locked = bool(self.data["event"])
+        if event_locked:
+            self.event_name.insert(0, self.data["event"].get("name", ""))
+            self.location.insert(0, self.data["event"].get("location", ""))
+            date_str = self.data["event"].get("date", datetime.now().strftime("%d/%m/%Y"))
+            try:
+                self.date.set_date(date_str)
+            except ValueError:
+                self.date.set_date(datetime.now())
+            self.event_name.config(state="disabled")
+            self.location.config(state="disabled")
+            self.date.config(state="disabled")
+            self.track_chk.config(state="disabled")
+            self.cfg_max_per_round.config(state="disabled")
+            self.cfg_xproc.config(state="disabled")
+
+        # Event-level actions.
+        actions = ttk.LabelFrame(page, text=L["nav_event"], padding=5)
+        actions.pack(fill="x", padx=4, pady=4)
+        self.reset_btn = ttk.Button(actions, text=L["reset_event"], command=self.reset_event)
+        self.reset_btn.pack(side=tk.LEFT, padx=3, pady=2)
+        self.export_btn = ttk.Button(actions, text=L["export_event"], command=self.export_event)
+        self.export_btn.pack(side=tk.LEFT, padx=3, pady=2)
+        self.manage_events_btn = ttk.Button(actions, text=L["events_btn"], command=self.open_manage_events_panel)
+        self.manage_events_btn.pack(side=tk.LEFT, padx=3, pady=2)
+        self.invoices_btn = ttk.Button(actions, text=L["invoices_btn"], command=self.open_invoices_manager)
+        self.invoices_btn.pack(side=tk.LEFT, padx=3, pady=2)
+
+    # ---- page: Log Catch ---------------------------------------------------
+    def _build_page_catch(self, page):
+        L = LANGUAGES[self.lang]
+        # Round selector (most relevant here: it picks the round being logged).
+        round_row = ttk.Frame(page)
+        round_row.pack(fill="x", padx=4, pady=(4, 0))
+        ttk.Label(round_row, text=L["manche_label"], font=("Arial", self.font_size)).pack(side="left")
+        self.manche_var = tk.StringVar()
+        self.manche_combo = ttk.Combobox(round_row, textvariable=self.manche_var, state="readonly",
+                                         values=session_display(self.lang),
+                                         font=("Arial", self.font_size), width=18)
+        self.manche_combo.pack(side="left", padx=6)
+        self.manche_combo.set(key_to_display(self.lang, self.current_manche))
+        self.manche_combo.bind("<<ComboboxSelected>>", self.on_manche_changed)
+
+        catch_frame = ttk.LabelFrame(page, text=L["log_catch"], padding=5)
+        catch_frame.pack(fill="x", padx=4, pady=6)
+        catch_frame.columnconfigure(1, weight=1)
+        ttk.Label(catch_frame, text=L["name"], font=("Arial", self.font_size)).grid(row=0, column=0, pady=3, sticky="w")
+        self.catch_name_var = tk.StringVar()
+        self.catch_name = ttk.Combobox(catch_frame, textvariable=self.catch_name_var,
+                                       values=self.catch_dropdown_values(),
+                                       font=("Arial", self.font_size), width=20)
+        self.catch_name.grid(row=0, column=1, pady=3, sticky="ew")
+        self.catch_name_var.set(L["select_participant"])
+        self.catch_name.config(foreground='grey')
+        self.catch_name.bind("<FocusIn>", self.on_combobox_focus_in)
+        self.catch_name.bind("<FocusOut>", self.on_combobox_focus_out)
+        self.catch_name.bind("<<ComboboxSelected>>", self.on_combobox_selected)
+        ttk.Label(catch_frame, text=L["fish_weight"], font=("Arial", self.font_size)).grid(row=1, column=0, pady=3, sticky="w")
+        self.fish_weight = ttk.Entry(catch_frame, font=("Arial", self.font_size), width=18, validate="key",
+                                     validatecommand=(self.root.register(self.validate_number), "%P"))
+        self.fish_weight.grid(row=1, column=1, pady=3, sticky="ew")
+        ttk.Label(catch_frame, text=L["num_catches"], font=("Arial", self.font_size)).grid(row=2, column=0, pady=3, sticky="w")
+        self.num_catches = ttk.Entry(catch_frame, font=("Arial", self.font_size), width=18, validate="key",
+                                     validatecommand=(self.root.register(self.validate_catches), "%P"))
+        self.num_catches.grid(row=2, column=1, pady=3, sticky="ew")
+        self.num_catches.insert(0, "1")
+        if self.data.get("track_details", False):
+            self.num_catches.config(state="disabled")
+        self.length_label = ttk.Label(catch_frame, text=L["fish_length"], font=("Arial", self.font_size))
+        self.length_label.grid(row=3, column=0, pady=3, sticky="w")
+        self.fish_length = ttk.Entry(catch_frame, font=("Arial", self.font_size), width=18, validate="key",
+                                     validatecommand=(self.root.register(self.validate_number), "%P"))
+        self.fish_length.grid(row=3, column=1, pady=3, sticky="ew")
+        self.type_label = ttk.Label(catch_frame, text=L["fish_type"], font=("Arial", self.font_size))
+        self.type_label.grid(row=4, column=0, pady=3, sticky="w")
+        self.fish_type = ttk.Entry(catch_frame, font=("Arial", self.font_size), width=18)
+        self.fish_type.grid(row=4, column=1, pady=3, sticky="ew")
+        self.log_btn = ttk.Button(catch_frame, text=L["log_catch"], command=self.log_catch)
+        self.log_btn.grid(row=5, column=0, pady=5, sticky="w")
+        self.edit_catches_btn = ttk.Button(catch_frame, text=L["edit_catches"], command=self.open_catch_editor)
+        self.edit_catches_btn.grid(row=5, column=1, pady=5, sticky="e")
+        self._apply_details_enabled_state()
+
+        # Who is in the current round (context for logging).
+        self.manche_pf = ttk.LabelFrame(
+            page, text=f'{L["participants"]} - {key_to_display(self.lang, self.current_manche)}', padding=5)
+        self.manche_pf.pack(fill="both", expand=True, padx=4, pady=3)
+        participants_canvas = tk.Canvas(self.manche_pf, height=160)
+        participants_scrollbar = ttk.Scrollbar(self.manche_pf, orient="vertical", command=participants_canvas.yview)
+        self.manche_participants_list = tk.Text(participants_canvas, height=8, width=30,
+                                                font=("Arial", self.font_size - 2))
+        participants_canvas.configure(yscrollcommand=participants_scrollbar.set)
+        participants_scrollbar.pack(side="right", fill="y")
+        participants_canvas.pack(side="left", fill="both", expand=True)
+        participants_canvas.create_window((0, 0), window=self.manche_participants_list, anchor="nw")
+        self.manche_participants_list.bind(
+            "<Configure>", lambda e: participants_canvas.configure(scrollregion=participants_canvas.bbox("all")))
+        self.update_manche_participants_list()
+
+    # ---- page: Participants ------------------------------------------------
+    def _build_page_participants(self, page):
+        L = LANGUAGES[self.lang]
+        box = ttk.LabelFrame(page, text=L["nav_participants"], padding=8)
+        box.pack(fill="x", padx=4, pady=4)
+        ttk.Label(box, text=L["manage_participants"], font=("Arial", self.font_size)).pack(anchor="w", pady=(0, 6))
+        self.manage_btn = ttk.Button(box, text=L["manage_participants"],
+                                     command=self.open_participants_manager)
+        self.manage_btn.pack(anchor="w")
+
+    # ---- page: Rankings ----------------------------------------------------
+    def _build_page_rankings(self, page):
+        L = LANGUAGES[self.lang]
+        rankings_outer = ttk.Frame(page)
+        rankings_outer.pack(fill="both", expand=True, padx=4, pady=4)
+        rankings_outer.columnconfigure(0, weight=1, uniform="rk")
+        rankings_outer.columnconfigure(1, weight=1, uniform="rk")
+        rankings_outer.rowconfigure(0, weight=1)
+        bg = self.root.cget("background")
+        round_lf = ttk.LabelFrame(rankings_outer, text=L["live_rankings"], padding=5)
+        round_lf.grid(row=0, column=0, sticky="nsew", padx=(0, 3))
+        self.rankings = tk.Text(round_lf, width=30, height=20, relief="flat",
+                                wrap="word", state="disabled", background=bg,
+                                borderwidth=0, highlightthickness=0)
+        self.rankings.pack(fill="both", expand=True)
+        self._style_ranking_text(self.rankings)
+        overall_lf = ttk.LabelFrame(rankings_outer, text=L["overall_rankings"], padding=5)
+        overall_lf.grid(row=0, column=1, sticky="nsew", padx=(3, 0))
+        self.overall_rankings = tk.Text(overall_lf, width=30, height=20, relief="flat",
+                                        wrap="word", state="disabled", background=bg,
+                                        borderwidth=0, highlightthickness=0)
+        self.overall_rankings.pack(fill="both", expand=True)
+        self._style_ranking_text(self.overall_rankings)
+        self.refresh_rankings()
+
+        settings_frame = ttk.LabelFrame(page, text=L["report_settings_label"], padding=5)
+        settings_frame.pack(fill="x", padx=4, pady=3)
+        ttk.Label(settings_frame, text=f'\u2713 {L["chk_event_summary"]}',
+                  font=("Arial", self.font_size - 2, "italic"), foreground="gray").pack(anchor="w", pady=2)
+        ttk.Checkbutton(settings_frame, text=L["chk_individual"],
+                        variable=self.include_individual_var).pack(anchor="w", pady=2)
+        self.combined_chk = ttk.Checkbutton(
+            settings_frame, text=L["chk_combined"], variable=self.include_combined_var)
+        self.combined_chk.pack(anchor="w", pady=2)
+        self._update_combined_state()
+        self.highlight_var = tk.BooleanVar(value=self.data.get("report_highlight", True))
+        def _on_highlight_toggle():
+            self.data["report_highlight"] = self.highlight_var.get()
+        self.highlight_chk = ttk.Checkbutton(settings_frame, text=L["report_highlight_label"],
+                        variable=self.highlight_var, command=_on_highlight_toggle)
+        self.highlight_chk.pack(anchor="w", pady=2)
+        colour_row = ttk.Frame(settings_frame)
+        colour_row.pack(anchor="w", pady=2, fill="x")
+        ttk.Label(colour_row, text=f'{L["report_highlight_colour"]}:',
+                  font=("Arial", self.font_size - 2)).pack(side="left")
+        self.highlight_colour_var = tk.StringVar(value=self.data.get("report_highlight_colour", "green"))
+        colour_labels = {"green": L["col_green"], "yellow": L["col_yellow"],
+                         "blue": L["col_blue"], "grey": L["col_grey"], "red": L["col_red"]}
+        self._highlight_colour_label_to_key = {v: k for k, v in colour_labels.items()}
+        self.highlight_colour_combo = ttk.Combobox(colour_row, state="readonly", width=10,
+                                    values=list(colour_labels.values()),
+                                    font=("Arial", self.font_size - 2))
+        self.highlight_colour_combo.set(colour_labels.get(self.highlight_colour_var.get(), L["col_green"]))
+        def _on_colour_pick(_e=None):
+            key = self._highlight_colour_label_to_key.get(self.highlight_colour_combo.get(), "green")
+            self.data["report_highlight_colour"] = key
+        self.highlight_colour_combo.bind("<<ComboboxSelected>>", _on_colour_pick)
+        self.highlight_colour_combo.pack(side="left", padx=6)
+        self._update_highlight_state()
+
+        btn_frame = ttk.Frame(page)
+        btn_frame.pack(fill="x", padx=4, pady=3)
+        self.report_btn = ttk.Button(btn_frame, text=L["generate_report"], command=self.generate_report)
+        self.report_btn.pack(side=tk.LEFT, padx=3)
+        self.open_report_btn = ttk.Button(btn_frame, text=L["reports_btn"], command=self.open_reports_panel)
+        self.open_report_btn.pack(side=tk.LEFT, padx=3)
+
+    # ---- page: Settings & Tools -------------------------------------------
+    def _build_page_settings(self, page):
+        L = LANGUAGES[self.lang]
+        box = ttk.LabelFrame(page, text=L["nav_settings"], padding=8)
+        box.pack(fill="x", padx=4, pady=4)
+        self.settings_btn = ttk.Button(box, text=L["settings_btn"], command=self.open_settings_dialog)
+        self.settings_btn.pack(side=tk.LEFT, padx=3, pady=2)
 
     def _apply_details_enabled_state(self):
         """Grey out / lock the length & type inputs when the event doesn't track them.
