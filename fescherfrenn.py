@@ -32,7 +32,18 @@ TRANSLATIONS_FILE = "translations.json"
 CONFIG_FILE = "config.json"
 HELP_FILE = "help.json"
 SESSION_KEYS = ["manche1", "manche2", "manche3", "final"]
-MAX_ROUNDS = 12  # generous upper bound for the configurable round count
+DEFAULT_MAX_ROUNDS = 12      # default app-wide ceiling for an event's rounds
+ROUND_CEILING_HARD_MAX = 99  # absolute safety cap (guards against typos)
+
+
+def round_ceiling():
+    """The current app-wide maximum number of rounds (from Settings/config),
+    clamped to a sane 1..99 so a stray value can never explode the UI."""
+    try:
+        val = int(CONFIG.get("max_round_count", DEFAULT_MAX_ROUNDS))
+    except (TypeError, ValueError):
+        val = DEFAULT_MAX_ROUNDS
+    return max(1, min(val, ROUND_CEILING_HARD_MAX))
 
 
 def make_session_keys(num_rounds):
@@ -77,7 +88,8 @@ DEFAULT_CONFIG = {
     "bank_account_holder": "Fescherfrenn Stengefort 2010",
     "bank_name": "Banque Raiffeisen",
     "iban_groups": ["CCRA", "LU85", "0090", "0000", "0597", "1635"],
-    "payment_terms_days": 30
+    "payment_terms_days": 30,
+    "max_round_count": 12,   # app-wide ceiling for an event's configurable rounds
 }
 
 
@@ -499,6 +511,24 @@ class FishingApp:
             return True
         return bool(re.match(r"^\d+$", input_str))
 
+    def validate_round_count(self, input_str):
+        """Round count typing: digits only, and never above the app-wide
+        ceiling (Settings). So if the ceiling is 5 you cannot type 6 or 55;
+        if it is 12 you can type up to 12. Range 1..ceiling is re-checked on
+        configure. Length is implicitly bounded since the ceiling is <= 99."""
+        if input_str == "":
+            return True
+        if not input_str.isdigit():
+            return False
+        return int(input_str) <= round_ceiling()
+
+    def validate_round_ceiling(self, input_str):
+        """Settings field for the round ceiling: digits only, 0..99 while
+        typing (>=1 enforced on save)."""
+        if input_str == "":
+            return True
+        return input_str.isdigit() and int(input_str) <= ROUND_CEILING_HARD_MAX
+
     def validate_length(self, input_str):
         """Validate input length for club and remark (max 64 chars)."""
         return len(input_str) <= 64
@@ -540,7 +570,7 @@ class FishingApp:
                 messagebox.showerror("Error", L["cfg_invalid_int"].format(field=hint, min=minimum))
                 return None
 
-        num_rounds = read(getattr(self, "cfg_num_rounds", None), "num_rounds", L["cfg_num_rounds"], 1, MAX_ROUNDS)
+        num_rounds = read(getattr(self, "cfg_num_rounds", None), "num_rounds", L["cfg_num_rounds"], 1, round_ceiling())
         if num_rounds is None:
             return None
         max_per_round = read(getattr(self, "cfg_max_per_round", None), "max_per_round", L["cfg_max_per_round"], 1)
@@ -606,10 +636,11 @@ class FishingApp:
 
         # -- Event configuration (Group A) --------------------------------
         cfg = self.data.get("config", {})
-        vint = (self.root.register(self.validate_number), "%P")
+        vrounds = (self.root.register(self.validate_round_count), "%P")
+        vint = (self.root.register(self.validate_catches), "%P")  # digits only
         ttk.Label(event_frame, text=L["cfg_num_rounds"], font=("Arial", self.font_size)).grid(row=4, column=0, pady=3, sticky="w")
         self.cfg_num_rounds = ttk.Entry(event_frame, font=("Arial", self.font_size), width=6,
-                                        validate="key", validatecommand=vint)
+                                        validate="key", validatecommand=vrounds)
         self.cfg_num_rounds.grid(row=4, column=1, pady=3, sticky="w")
         self.cfg_num_rounds.insert(0, str(cfg.get("num_rounds", 3)))
         ttk.Label(event_frame, text=L["cfg_max_per_round"], font=("Arial", self.font_size)).grid(row=5, column=0, pady=3, sticky="w")
@@ -1163,13 +1194,19 @@ class FishingApp:
 
     def round_weight_ranking(self, round_key):
         """(name, total_weight, place) for participants in a round who caught
-        at least one fish, ranked by total weight (tie ranking applied)."""
+        at least one fish, ranked by total weight (tie ranking applied).
+
+        Weight totals are rounded before comparison so that anglers meant to
+        be tied are detected as tied: summing decimal weights can otherwise
+        leave floating-point noise (e.g. 333.33 + 666.67 -> 1000.0000000001),
+        which would split a real tie and skip the tie prompt at the boundary.
+        """
         sess = self.data["sessions"][round_key]
         weights = {}
         for n in sess["participants"]:
             cs = sess["catches"].get(n, [])
             if sum(c.get("num_catches", 1) for c in cs) >= 1:  # >= 1 fish
-                weights[n] = sum(c["weight"] for c in cs)
+                weights[n] = round(sum(c["weight"] for c in cs), 3)
         ranked = sorted(weights.items(), key=lambda x: (-x[1], x[0]))
         return self._competition_places(ranked)
 
@@ -3133,6 +3170,18 @@ class FishingApp:
         make_asset_row(2, "watermark", "asset_watermark")
         make_asset_row(3, "icon", "asset_icon")
 
+        # -- Competition defaults (app-wide) --
+        sec4 = ttk.LabelFrame(body, text=L["settings_general_section"], padding=8)
+        sec4.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        sec4.columnconfigure(1, weight=1)
+        ttk.Label(sec4, text=L["settings_field_max_rounds"], font=("Arial", self.font_size)).grid(
+            row=0, column=0, sticky="w", pady=3, padx=(0, 8))
+        max_rounds_entry = ttk.Entry(sec4, font=("Arial", self.font_size), width=6,
+                                     validate="key",
+                                     validatecommand=(self.root.register(self.validate_round_ceiling), "%P"))
+        max_rounds_entry.grid(row=0, column=1, sticky="w")
+        max_rounds_entry.insert(0, str(CONFIG.get("max_round_count", DEFAULT_MAX_ROUNDS)))
+
         def do_save():
             new_cfg = dict(CONFIG)
             for k, e in entries.items():
@@ -3168,6 +3217,12 @@ class FishingApp:
                 new_cfg["payment_terms_days"] = int(new_cfg.get("payment_terms_days", 30))
             except ValueError:
                 new_cfg["payment_terms_days"] = 30
+            # max round count (app-wide ceiling) -> int, clamped 1..99
+            try:
+                mrc = int(max_rounds_entry.get().strip())
+            except ValueError:
+                mrc = DEFAULT_MAX_ROUNDS
+            new_cfg["max_round_count"] = max(1, min(mrc, ROUND_CEILING_HARD_MAX))
             if save_config(new_cfg):
                 messagebox.showinfo("", L["settings_saved"])
                 dlg.destroy()
@@ -3614,6 +3669,7 @@ class FishingApp:
     def reset_event(self):
         if self.custom_dialog(LANGUAGES[self.lang]["reset_event"], LANGUAGES[self.lang]["confirm_reset"], [(LANGUAGES[self.lang]["yes"], True), (LANGUAGES[self.lang]["no"], False)]):
             self.data = new_event_data(self.lang)
+            self.current_manche = "manche1"   # back to Round 1 for the fresh event
             folder_name = get_event_folder(self.data["event"])
             data_file = os.path.join(folder_name, f"{folder_name}.json")
             if os.path.exists(data_file):
@@ -3659,17 +3715,21 @@ class FishingApp:
             logging.error(f"export_event canonical save failed: {str(e)}")
             messagebox.showerror("Error", f"Export failed: {str(e)}")
             return
-        dest = filedialog.asksaveasfilename(
+        # Ask only for a destination FOLDER (a save-file dialog re-prompts to
+        # confirm overwrite on macOS regardless of confirmoverwrite, which is
+        # noise here since the app saves to the canonical copy continuously).
+        # The portable copy is written into the chosen folder under the event's
+        # own filename, overwriting silently if present.
+        dest_dir = filedialog.askdirectory(
             title=LANGUAGES[self.lang]["export_event"],
-            defaultextension=".json",
             initialdir=os.path.abspath(folder_name),
-            initialfile=f"{folder_name}.json",
-            filetypes=[("JSON files", "*.json")])
-        if not dest or os.path.abspath(dest) == os.path.abspath(canonical):
-            # Cancelled, or chose the canonical path itself - already saved.
+            mustexist=True)
+        if not dest_dir or os.path.abspath(dest_dir) == os.path.abspath(folder_name):
+            # Cancelled, or chose the canonical folder itself - already saved.
             messagebox.showinfo(LANGUAGES[self.lang]["saved"],
                                 LANGUAGES[self.lang]["export_success"].format(filename=os.path.abspath(canonical)))
             return
+        dest = os.path.join(dest_dir, f"{folder_name}.json")
         try:
             with open(dest, 'w', encoding='utf-8') as file:
                 json.dump(self.data, file, indent=4, ensure_ascii=False)

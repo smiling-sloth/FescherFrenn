@@ -139,6 +139,25 @@ Output naming:
 
 ## Changelog
 
+### v3.10.2 (configurable round ceiling)
+- New "Competition defaults" setting: the maximum number of rounds an event
+  may use is now an app-wide value in Settings (saved in config.json, shared
+  across events, default 12, hard-capped at 99). The per-event default stays
+  at 3 in the event configuration.
+- The round-count field in the event configuration now blocks, as you type,
+  anything above the configured ceiling (e.g. with a ceiling of 5 you cannot
+  type 6 or 55) - digits only, no dots or commas.
+
+### v3.10.1 (fixes)
+- Finalist qualification: weight totals are now rounded before ranking, so
+  anglers with equal totals are correctly detected as tied. Previously,
+  floating-point noise from summing decimal weights (e.g. 333.33 + 666.67)
+  could split a genuine tie and skip the "who proceeds" prompt at the
+  proceeding boundary.
+- Export no longer triggers the operating system's "file already exists,
+  replace?" confirmation (the app saves to that location continuously
+  anyway).
+
 ### v3.10 (dynamic number of rounds)
 - The number of rounds is now configurable (1-12, excluding the final),
   not fixed at 3. Set it in the event configuration before locking the

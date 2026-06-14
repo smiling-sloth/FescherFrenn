@@ -275,7 +275,9 @@
     "catch_not_in_round": "This participant has not been added to {rnd}. Add them to the round first.",
     "round_label": "Round {n}",
     "cfg_num_rounds_hint": "Number of rounds (1-12), excluding the final.",
-    "cfg_rounds_locked_note": "Rounds, max per round and proceed-to-final are locked once the event is configured."
+    "cfg_rounds_locked_note": "Rounds, max per round and proceed-to-final are locked once the event is configured.",
+    "settings_general_section": "Competition defaults",
+    "settings_field_max_rounds": "Maximum rounds (1-99)"
   },
   "French": {
     "title": "Registre de Concours de Pêche Fëscherfrënn Stengefort",
@@ -553,7 +555,9 @@
     "catch_not_in_round": "Ce participant n'a pas été ajouté à {rnd}. Ajoutez-le d'abord à la manche.",
     "round_label": "Manche {n}",
     "cfg_num_rounds_hint": "Nombre de manches (1-12), hors finale.",
-    "cfg_rounds_locked_note": "Manches, max par manche et qualifiés sont verrouillés une fois le concours configuré."
+    "cfg_rounds_locked_note": "Manches, max par manche et qualifiés sont verrouillés une fois le concours configuré.",
+    "settings_general_section": "Paramètres du concours",
+    "settings_field_max_rounds": "Nombre maximal de manches (1-99)"
   },
   "German": {
     "title": "Fëscherfrënn Stengefort Angelwettbewerb Register",
@@ -831,7 +835,9 @@
     "catch_not_in_round": "Dieser Teilnehmer wurde {rnd} nicht hinzugefügt. Fügen Sie ihn zuerst zur Runde hinzu.",
     "round_label": "Runde {n}",
     "cfg_num_rounds_hint": "Anzahl der Runden (1-12), ohne Finale.",
-    "cfg_rounds_locked_note": "Runden, Max pro Runde und Finaleinzug werden nach der Konfiguration gesperrt."
+    "cfg_rounds_locked_note": "Runden, Max pro Runde und Finaleinzug werden nach der Konfiguration gesperrt.",
+    "settings_general_section": "Wettbewerbs-Standardwerte",
+    "settings_field_max_rounds": "Maximale Rundenzahl (1-99)"
   },
   "Luxembourgish": {
     "title": "Fëscherfrënn Stengefort Fëschkonkurrenz Register",
@@ -1109,6 +1115,8 @@
     "catch_not_in_round": "Dëse Participant ass net bei {rnd} bäigesat. Setzt en fir d'éischt bei d'Manche bäi.",
     "round_label": "Manche {n}",
     "cfg_num_rounds_hint": "Unzuel Manchen (1-12), ouni Finale.",
-    "cfg_rounds_locked_note": "Manchen, Max pro Manche an Finaleinzuch ginn no der Konfiguratioun gespaart."
+    "cfg_rounds_locked_note": "Manchen, Max pro Manche an Finaleinzuch ginn no der Konfiguratioun gespaart.",
+    "settings_general_section": "Concours-Standardwäerter",
+    "settings_field_max_rounds": "Maximal Unzuel Manchen (1-99)"
   }
 }
