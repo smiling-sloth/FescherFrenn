@@ -500,7 +500,9 @@ class FishingApp:
             self.current_page = "event"
 
             try:
-                self.logo = tk.PhotoImage(file="logo.png")
+                _raw_logo = tk.PhotoImage(file="logo.png")
+                _factor = max(1, round(_raw_logo.height() / 100))
+                self.logo = _raw_logo.subsample(_factor) if _factor > 1 else _raw_logo
                 self.logo_label = ttk.Label(self.main_frame, image=self.logo)
                 self.logo_label.grid(row=0, column=0, pady=5, padx=5, sticky="nw")
             except Exception:
@@ -884,15 +886,22 @@ class FishingApp:
         self.export_btn.pack(side=tk.LEFT, padx=3, pady=2)
         self.manage_events_btn = ttk.Button(actions, text=L["events_btn"], command=self.open_manage_events_panel)
         self.manage_events_btn.pack(side=tk.LEFT, padx=3, pady=2)
-        self.invoices_btn = ttk.Button(actions, text=L["invoices_btn"], command=self.open_invoices_manager)
-        self.invoices_btn.pack(side=tk.LEFT, padx=3, pady=2)
 
-    # ---- page: Log Catch ---------------------------------------------------
+    # ---- page: Log Catch & Rankings (operating screen) -------------------
     def _build_page_catch(self, page):
         L = LANGUAGES[self.lang]
-        # Round selector (most relevant here: it picks the round being logged).
-        round_row = ttk.Frame(page)
-        round_row.pack(fill="x", padx=4, pady=(4, 0))
+        cols = ttk.Frame(page)
+        cols.pack(fill="both", expand=True)
+        cols.columnconfigure(0, weight=0, minsize=300)   # catch entry (natural)
+        cols.columnconfigure(1, weight=3)                # live board (widest)
+        cols.columnconfigure(2, weight=2)                # overall / categories
+        cols.rowconfigure(0, weight=1)
+
+        # -- left column: round selector + catch entry --
+        left = ttk.Frame(cols)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        round_row = ttk.Frame(left)
+        round_row.pack(fill="x", pady=(0, 4))
         ttk.Label(round_row, text=L["manche_label"], font=("Arial", self.font_size)).pack(side="left")
         self.manche_var = tk.StringVar()
         self.manche_combo = ttk.Combobox(round_row, textvariable=self.manche_var, state="readonly",
@@ -902,8 +911,8 @@ class FishingApp:
         self.manche_combo.set(key_to_display(self.lang, self.current_manche))
         self.manche_combo.bind("<<ComboboxSelected>>", self.on_manche_changed)
 
-        catch_frame = ttk.LabelFrame(page, text=L["log_catch"], padding=5)
-        catch_frame.pack(fill="x", padx=4, pady=6)
+        catch_frame = ttk.LabelFrame(left, text=L["log_catch"], padding=5)
+        catch_frame.pack(fill="x")
         catch_frame.columnconfigure(1, weight=1)
         ttk.Label(catch_frame, text=L["name"], font=("Arial", self.font_size)).grid(row=0, column=0, pady=3, sticky="w")
         self.catch_name_var = tk.StringVar()
@@ -942,21 +951,27 @@ class FishingApp:
         self.edit_catches_btn.grid(row=5, column=1, pady=5, sticky="e")
         self._apply_details_enabled_state()
 
-        # Who is in the current round (context for logging).
-        self.manche_pf = ttk.LabelFrame(
-            page, text=f'{L["participants"]} - {key_to_display(self.lang, self.current_manche)}', padding=5)
-        self.manche_pf.pack(fill="both", expand=True, padx=4, pady=3)
-        participants_canvas = tk.Canvas(self.manche_pf, height=160)
-        participants_scrollbar = ttk.Scrollbar(self.manche_pf, orient="vertical", command=participants_canvas.yview)
-        self.manche_participants_list = tk.Text(participants_canvas, height=8, width=30,
-                                                font=("Arial", self.font_size - 2))
-        participants_canvas.configure(yscrollcommand=participants_scrollbar.set)
-        participants_scrollbar.pack(side="right", fill="y")
-        participants_canvas.pack(side="left", fill="both", expand=True)
-        participants_canvas.create_window((0, 0), window=self.manche_participants_list, anchor="nw")
-        self.manche_participants_list.bind(
-            "<Configure>", lambda e: participants_canvas.configure(scrollregion=participants_canvas.bbox("all")))
-        self.update_manche_participants_list()
+        # -- middle column: live qualification board (aligned table) --
+        live_lf = ttk.LabelFrame(cols, text=L["live_rankings"], padding=5)
+        live_lf.grid(row=0, column=1, sticky="nsew", padx=4)
+        self.live_legend = ttk.Frame(live_lf)
+        self.live_legend.pack(side="bottom", fill="x", pady=(6, 0))
+        self.live_table = ttk.Frame(live_lf)
+        self.live_table.pack(side="top", fill="both", expand=True)
+
+        # -- right column: overall standings / category trophies (aligned table) --
+        overall_lf = ttk.LabelFrame(cols, text=L["overall_rankings"], padding=5)
+        overall_lf.grid(row=0, column=2, sticky="nsew", padx=(4, 0))
+        self.overall_table = ttk.Frame(overall_lf)
+        self.overall_table.pack(fill="both", expand=True)
+
+        # The "in this round" list is intentionally dropped here: the live board
+        # already shows who is fishing, and the space is better used.
+        self.manche_pf = None
+        self.manche_participants_list = None
+        self.rankings = None
+        self.overall_rankings = None
+        self.refresh_rankings()
 
     # ---- page: Participants ------------------------------------------------
     def _build_page_participants(self, page):
@@ -971,28 +986,6 @@ class FishingApp:
     # ---- page: Rankings ----------------------------------------------------
     def _build_page_rankings(self, page):
         L = LANGUAGES[self.lang]
-        rankings_outer = ttk.Frame(page)
-        rankings_outer.pack(fill="both", expand=True, padx=4, pady=4)
-        rankings_outer.columnconfigure(0, weight=1, uniform="rk")
-        rankings_outer.columnconfigure(1, weight=1, uniform="rk")
-        rankings_outer.rowconfigure(0, weight=1)
-        bg = self.root.cget("background")
-        round_lf = ttk.LabelFrame(rankings_outer, text=L["live_rankings"], padding=5)
-        round_lf.grid(row=0, column=0, sticky="nsew", padx=(0, 3))
-        self.rankings = tk.Text(round_lf, width=30, height=20, relief="flat",
-                                wrap="word", state="disabled", background=bg,
-                                borderwidth=0, highlightthickness=0)
-        self.rankings.pack(fill="both", expand=True)
-        self._style_ranking_text(self.rankings)
-        overall_lf = ttk.LabelFrame(rankings_outer, text=L["overall_rankings"], padding=5)
-        overall_lf.grid(row=0, column=1, sticky="nsew", padx=(3, 0))
-        self.overall_rankings = tk.Text(overall_lf, width=30, height=20, relief="flat",
-                                        wrap="word", state="disabled", background=bg,
-                                        borderwidth=0, highlightthickness=0)
-        self.overall_rankings.pack(fill="both", expand=True)
-        self._style_ranking_text(self.overall_rankings)
-        self.refresh_rankings()
-
         settings_frame = ttk.LabelFrame(page, text=L["report_settings_label"], padding=5)
         settings_frame.pack(fill="x", padx=4, pady=3)
         ttk.Label(settings_frame, text=f'\u2713 {L["chk_event_summary"]}',
@@ -1034,6 +1027,8 @@ class FishingApp:
         self.report_btn.pack(side=tk.LEFT, padx=3)
         self.open_report_btn = ttk.Button(btn_frame, text=L["reports_btn"], command=self.open_reports_panel)
         self.open_report_btn.pack(side=tk.LEFT, padx=3)
+        self.invoices_btn = ttk.Button(btn_frame, text=L["invoices_btn"], command=self.open_invoices_manager)
+        self.invoices_btn.pack(side=tk.LEFT, padx=3)
 
     # ---- page: Settings & Tools -------------------------------------------
     def _build_page_settings(self, page):
@@ -1499,6 +1494,11 @@ class FishingApp:
         widget.tag_configure("normal", font=("Arial", max(8, self.font_size - 3)))
         widget.tag_configure("dim", foreground="#999999",
                              font=("Arial", max(8, self.font_size - 3), "italic"))
+        bf = ("Arial", max(8, self.font_size - 3), "bold")
+        widget.tag_configure("q_badge", background="#bfe0a0", foreground="#173404", font=bf)
+        widget.tag_configure("a_badge", background="#aecdf2", foreground="#0C447C", font=bf)
+        widget.tag_configure("tie_badge", background="#f3cd86", foreground="#854F0B", font=bf)
+        widget.tag_configure("d_badge", background="#eda9a9", foreground="#791F1F", font=bf)
 
     def render_rankings(self, widget, segments):
         if widget is None:
@@ -1509,9 +1509,183 @@ class FishingApp:
             widget.insert(tk.END, txt, tag)
         widget.config(state="disabled")
 
+    def _round_badges(self, round_key):
+        """Map participant -> qualification badge for the live board of a round:
+        'A' already qualified in an earlier round, 'Q' qualifies on this round,
+        '?' tied for the last slot (undecided), 'D' not qualified. Empty in the
+        final (no qualification there)."""
+        rounds = [k for k in SESSION_KEYS if k != "final"]
+        if round_key not in rounds:
+            return {}
+        res = self.compute_qualifiers()  # no resolver -> ties surface as pending
+        per = res["per_round"]
+        idx = rounds.index(round_key)
+        already_before = set()
+        for r in rounds[:idx]:
+            already_before |= set(per.get(r, {}).get("qualified", []))
+        this = per.get(round_key, {"qualified": [], "pending_tie": []})
+        qset, tset = set(this["qualified"]), set(this["pending_tie"])
+        badges = {}
+        for (name, w, place) in self.round_weight_ranking(round_key):
+            if name in already_before:
+                badges[name] = "A"
+            elif name in qset:
+                badges[name] = "Q"
+            elif name in tset:
+                badges[name] = "?"
+            else:
+                badges[name] = "D"
+        return badges
+
+    # Single muted colour for weight values, used in BOTH panels so they match.
+    WEIGHT_FG = "#9aa0a6"
+    BADGE_STYLES = {"Q": ("#bfe0a0", "#173404"), "A": ("#aecdf2", "#0C447C"),
+                    "?": ("#f3cd86", "#854F0B"), "D": ("#eda9a9", "#791F1F")}
+
+    def live_board_data(self):
+        """Structured rows for the live board: (badge|None, place, name, weight_str).
+        Returns (rows, is_final, extra_count)."""
+        mk = self.current_manche
+        ranked = self.round_weight_ranking(mk)
+        is_final = (mk == "final")
+        badges = {} if is_final else self._round_badges(mk)
+        xproc = self.data.get("config", {}).get("xproc", 10)
+        show_n = min(len(ranked), max(10, xproc + 5))
+        rows = []
+        for (name, w, place) in ranked[:show_n]:
+            b = None if is_final else badges.get(name, "D")
+            rows.append((b, place, name, f"{self.fmt_weight(w)} g"))
+        extra = len(ranked) - show_n if len(ranked) > show_n else 0
+        return rows, is_final, extra
+
+    def overall_podium_data(self):
+        """Structured items for the overall panel: ('section', title),
+        ('row', place_or_'', name, weight_str) or ('empty', text). Overall top 3
+        (all participants, pooled weight) then Ladies/U20/U15/U10 best one each;
+        empty categories omitted. Awards only; no effect on the final."""
+        L = LANGUAGES[self.lang]
+        pooled, fish = {}, {}
+        for sk in SESSION_KEYS:
+            for n, cs in self.data["sessions"][sk]["catches"].items():
+                if not cs:
+                    continue
+                pooled[n] = pooled.get(n, 0) + sum(c["weight"] for c in cs)
+                fish[n] = fish.get(n, 0) + sum(c.get("num_catches", 1) for c in cs)
+        eligible = {n: round(pooled[n], 3) for n in pooled if fish.get(n, 0) >= 1}
+        items = [("section", L["overall_top3"])]
+        ranked = self._competition_places(sorted(eligible.items(), key=lambda x: (-x[1], x[0])))
+        if not ranked:
+            items.append(("empty", L["no_results"]))
+            return items
+        for (n, w, p) in [r for r in ranked if r[2] <= 3]:
+            items.append(("row", f"{p}.", n, f"{self.fmt_weight(w)} g"))
+        parts = self.data.get("participants", {})
+        for catkey in ["Lady", "U20", "U15", "U10"]:
+            in_cat = {n: w for n, w in eligible.items()
+                      if parts.get(n, {}).get("category") == catkey}
+            if not in_cat:
+                continue
+            cranked = self._competition_places(sorted(in_cat.items(), key=lambda x: (-x[1], x[0])))
+            items.append(("section", L["category_options"].get(catkey, catkey)))
+            for (n, w, p) in [r for r in cranked if r[2] == 1]:
+                items.append(("row", "", n, f"{self.fmt_weight(w)} g"))
+        return items
+
+    def _clear_frame(self, frame):
+        for w in frame.winfo_children():
+            w.destroy()
+
+    def _render_live_board(self, table, legend):
+        """Render the live board as an aligned table with column headers, and
+        the qualification legend pinned in its own bottom strip."""
+        L = LANGUAGES[self.lang]
+        fs = self.font_size
+        self._clear_frame(table)
+        self._clear_frame(legend)
+        rows, is_final, extra = self.live_board_data()
+        hf = ("Arial", max(9, fs - 2), "bold")
+        rf = ("Arial", max(8, fs - 2))
+        df = ("Arial", max(8, fs - 3), "italic")
+        table.columnconfigure(0, weight=0)   # badge
+        table.columnconfigure(1, weight=0)   # place
+        table.columnconfigure(2, weight=1)   # name (stretch)
+        table.columnconfigure(3, weight=0)   # weight
+        r = 0
+        ttk.Label(table, text=L["col_pos"], font=hf).grid(row=r, column=1, sticky="e", padx=4, pady=(0, 3))
+        ttk.Label(table, text=L["col_name"], font=hf).grid(row=r, column=2, sticky="w", padx=4, pady=(0, 3))
+        ttk.Label(table, text=L["col_weight"], font=hf).grid(row=r, column=3, sticky="e", padx=4, pady=(0, 3))
+        r += 1
+        if not rows:
+            ttk.Label(table, text=L["no_catches_round"], font=df, foreground="#999").grid(
+                row=r, column=0, columnspan=4, sticky="w", padx=4, pady=4)
+            return
+        for (b, place, name, wtxt) in rows:
+            if not is_final and b:
+                bg, fg = self.BADGE_STYLES[b]
+                tk.Label(table, text=f" {b} ", background=bg, foreground=fg,
+                         font=("Arial", max(8, fs - 3), "bold")).grid(row=r, column=0, padx=(0, 4), pady=1)
+            ttk.Label(table, text=f"{place}.", font=rf).grid(row=r, column=1, sticky="e", padx=4)
+            ttk.Label(table, text=name, font=rf).grid(row=r, column=2, sticky="w", padx=4)
+            ttk.Label(table, text=wtxt, font=rf, foreground=self.WEIGHT_FG).grid(row=r, column=3, sticky="e", padx=4)
+            r += 1
+        if extra:
+            ttk.Label(table, text=f"\u2026 +{extra}", font=df, foreground="#999").grid(
+                row=r, column=0, columnspan=4, sticky="w", padx=4)
+        if not is_final:
+            c = 0
+            for letter in ("Q", "A", "?", "D"):
+                bg, fg = self.BADGE_STYLES[letter]
+                txt = {"Q": L["legend_q"], "A": L["legend_a"], "?": L["legend_tie"], "D": L["legend_d"]}[letter]
+                tk.Label(legend, text=f" {letter} ", background=bg, foreground=fg,
+                         font=("Arial", max(7, fs - 4), "bold")).grid(row=0, column=c, padx=(6, 2), pady=2)
+                c += 1
+                ttk.Label(legend, text=txt.split(" ", 1)[-1] if " " in txt else txt,
+                          font=("Arial", max(7, fs - 4))).grid(row=0, column=c, padx=(0, 2))
+                c += 1
+
+    def _render_overall(self, table):
+        """Render the overall panel: section headers (Overall, then categories)
+        with aligned #/Name/Weight columns and the same weight colour as live."""
+        L = LANGUAGES[self.lang]
+        fs = self.font_size
+        self._clear_frame(table)
+        items = self.overall_podium_data()
+        headf = ("Arial", max(9, fs - 2), "bold")
+        subf = ("Arial", max(8, fs - 3), "bold")
+        rf = ("Arial", max(8, fs - 2))
+        table.columnconfigure(0, weight=0)   # place
+        table.columnconfigure(1, weight=1)   # name (stretch)
+        table.columnconfigure(2, weight=0)   # weight
+        r = 0
+        header_added = False
+        for it in items:
+            if it[0] == "section":
+                ttk.Label(table, text=it[1], font=(headf if not header_added else subf)).grid(
+                    row=r, column=0, columnspan=3, sticky="w", padx=4,
+                    pady=((6, 1) if header_added else (0, 1)))
+                r += 1
+                if not header_added:
+                    ttk.Label(table, text=L["col_pos"], font=subf).grid(row=r, column=0, sticky="e", padx=4)
+                    ttk.Label(table, text=L["col_name"], font=subf).grid(row=r, column=1, sticky="w", padx=4)
+                    ttk.Label(table, text=L["col_weight"], font=subf).grid(row=r, column=2, sticky="e", padx=4)
+                    r += 1
+                    header_added = True
+            elif it[0] == "empty":
+                ttk.Label(table, text=it[1], font=("Arial", max(8, fs - 3), "italic"),
+                          foreground="#999").grid(row=r, column=0, columnspan=3, sticky="w", padx=4, pady=4)
+                r += 1
+            else:
+                _, place, name, wtxt = it
+                ttk.Label(table, text=place, font=rf).grid(row=r, column=0, sticky="e", padx=4)
+                ttk.Label(table, text=name, font=rf).grid(row=r, column=1, sticky="w", padx=4)
+                ttk.Label(table, text=wtxt, font=rf, foreground=self.WEIGHT_FG).grid(row=r, column=2, sticky="e", padx=4)
+                r += 1
+
     def refresh_rankings(self):
-        self.render_rankings(self.rankings, self.round_rankings_segments())
-        self.render_rankings(self.overall_rankings, self.overall_rankings_segments())
+        if getattr(self, "live_table", None) is not None:
+            self._render_live_board(self.live_table, self.live_legend)
+        if getattr(self, "overall_table", None) is not None:
+            self._render_overall(self.overall_table)
 
 
     # -- formatting helper for editable numbers ---------------------
