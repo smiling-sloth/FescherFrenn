@@ -304,7 +304,10 @@
     "podium_category": "Category trophies",
     "col_pos": "#",
     "col_name": "Name",
-    "col_weight": "Weight"
+    "col_weight": "Weight",
+    "participants_locked_hint": "Configure the event (rounds, participants per round, qualifiers) on the Event page, then lock it here to start building the rosters.",
+    "lock_and_manage": "Lock configuration & manage participants",
+    "allrounds_title": "All rounds — who is in which round"
   },
   "French": {
     "title": "Registre de Concours de Pêche Fëscherfrënn Stengefort",
@@ -611,7 +614,10 @@
     "podium_category": "Trophées par catégorie",
     "col_pos": "#",
     "col_name": "Nom",
-    "col_weight": "Poids"
+    "col_weight": "Poids",
+    "participants_locked_hint": "Configurez le concours (manches, participants par manche, qualifiés) sur la page Concours, puis verrouillez ici pour composer les listes.",
+    "lock_and_manage": "Verrouiller la configuration & gérer les participants",
+    "allrounds_title": "Toutes les manches — qui est dans quelle manche"
   },
   "German": {
     "title": "Fëscherfrënn Stengefort Angelwettbewerb Register",
@@ -918,7 +924,10 @@
     "podium_category": "Kategorie-Trophäen",
     "col_pos": "#",
     "col_name": "Name",
-    "col_weight": "Gewicht"
+    "col_weight": "Gewicht",
+    "participants_locked_hint": "Konfigurieren Sie den Wettbewerb (Runden, Teilnehmer pro Runde, Qualifikanten) auf der Wettbewerbsseite und sperren Sie ihn hier, um die Listen zu erstellen.",
+    "lock_and_manage": "Konfiguration sperren & Teilnehmer verwalten",
+    "allrounds_title": "Alle Runden — wer ist in welcher Runde"
   },
   "Luxembourgish": {
     "title": "Fëscherfrënn Stengefort Fëschkonkurrenz Register",
@@ -1225,6 +1234,9 @@
     "podium_category": "Kategorie-Trophéeën",
     "col_pos": "#",
     "col_name": "Numm",
-    "col_weight": "Gewiicht"
+    "col_weight": "Gewiicht",
+    "participants_locked_hint": "Konfiguréiert de Concours (Manchen, Participanten pro Manche, Qualifizéierter) op der Concours-Säit, a späert en hei fir d'Lëschten ze maachen.",
+    "lock_and_manage": "Konfiguratioun spären & Participante verwalten",
+    "allrounds_title": "All Manchen — wien ass an wéi enger Manche"
   }
 }

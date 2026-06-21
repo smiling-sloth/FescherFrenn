@@ -23,7 +23,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "4.0"
+APP_VERSION = "4.1"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -726,6 +726,11 @@ class FishingApp:
             f.grid(row=0, column=0, sticky="nsew")
             self.pages[name] = f
 
+        # Round selectors on multiple pages stay in lockstep via this registry;
+        # the participants-page refresh hook is set when that workspace builds.
+        self._round_selectors = []
+        self._participants_refresh = None
+
         self._build_page_event(self.pages["event"])
         self._build_page_catch(self.pages["catch"])
         self._build_page_participants(self.pages["participants"])
@@ -910,6 +915,7 @@ class FishingApp:
         self.manche_combo.pack(side="left", padx=6)
         self.manche_combo.set(key_to_display(self.lang, self.current_manche))
         self.manche_combo.bind("<<ComboboxSelected>>", self.on_manche_changed)
+        self._round_selectors.append(self.manche_combo)
 
         catch_frame = ttk.LabelFrame(left, text=L["log_catch"], padding=5)
         catch_frame.pack(fill="x")
@@ -976,12 +982,257 @@ class FishingApp:
     # ---- page: Participants ------------------------------------------------
     def _build_page_participants(self, page):
         L = LANGUAGES[self.lang]
-        box = ttk.LabelFrame(page, text=L["nav_participants"], padding=8)
-        box.pack(fill="x", padx=4, pady=4)
-        ttk.Label(box, text=L["manage_participants"], font=("Arial", self.font_size)).pack(anchor="w", pady=(0, 6))
-        self.manage_btn = ttk.Button(box, text=L["manage_participants"],
-                                     command=self.open_participants_manager)
-        self.manage_btn.pack(anchor="w")
+        self._participants_refresh = None
+        # Until the configuration is locked, the roster shape isn't fixed, so
+        # show the freeze gate instead of the workspace.
+        if not self.data.get("config_locked", False):
+            box = ttk.LabelFrame(page, text=L["nav_participants"], padding=12)
+            box.pack(fill="x", padx=4, pady=4)
+            ttk.Label(box, text=L["participants_locked_hint"], font=("Arial", self.font_size),
+                      wraplength=620, justify="left").pack(anchor="w", pady=(0, 10))
+            self.manage_btn = ttk.Button(box, text=L["lock_and_manage"],
+                                         command=self._freeze_then_manage)
+            self.manage_btn.pack(anchor="w")
+            return
+        self._build_participants_workspace(page)
+
+    def _freeze_then_manage(self):
+        """Run the config freeze gate (same as the old manager entry), then
+        rebuild so the Participants page shows the workspace."""
+        L = LANGUAGES[self.lang]
+        if not self.check_event_details():
+            return
+        cfg = self._read_config_fields()
+        if cfg is None:
+            return
+        total = cfg["num_rounds"] * cfg["xproc"]
+        if total > cfg["max_per_round"]:
+            if not messagebox.askyesno("", L["cfg_xproc_exceeds"].format(
+                    total=total, maxp=cfg["max_per_round"])):
+                return
+        if not messagebox.askokcancel("", L["cfg_freeze_q"]):
+            return
+        self.data["config"] = cfg
+        self.data["config_locked"] = True
+        set_session_keys(cfg["num_rounds"])
+        self._rebuild_sessions_for_config()
+        self.update_event()
+        self.build_main_ui()
+        self.show_page("participants")
+
+    def _build_participants_workspace(self, page):
+        L = LANGUAGES[self.lang]
+        page.columnconfigure(0, weight=1)
+        page.rowconfigure(1, weight=1)   # transfer row stretches
+        page.rowconfigure(2, weight=1)   # matrix stretches
+
+        # Round selector (synced with the operating screen).
+        sel_row = ttk.Frame(page)
+        sel_row.grid(row=0, column=0, sticky="w", padx=4, pady=(2, 6))
+        ttk.Label(sel_row, text=L["manche_label"], font=("Arial", self.font_size)).pack(side="left")
+        self.part_manche_var = tk.StringVar()
+        part_combo = ttk.Combobox(sel_row, textvariable=self.part_manche_var, state="readonly",
+                                  values=session_display(self.lang),
+                                  font=("Arial", self.font_size), width=18)
+        part_combo.set(key_to_display(self.lang, self.current_manche))
+        part_combo.bind("<<ComboboxSelected>>", self.on_manche_changed)
+        part_combo.pack(side="left", padx=6)
+        self._round_selectors.append(part_combo)
+
+        # Transfer area: roster | buttons | current round.
+        transfer = ttk.Frame(page)
+        transfer.grid(row=1, column=0, sticky="nsew", padx=4)
+        transfer.columnconfigure(0, weight=1)
+        transfer.columnconfigure(2, weight=1)
+        transfer.rowconfigure(0, weight=1)
+
+        left = ttk.LabelFrame(transfer, text=L["competition_roster"], padding=6)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        roster_tv = ttk.Treeview(left, columns=("club", "cat"), show="tree headings",
+                                 height=10, selectmode="extended")
+        roster_tv.heading("#0", text=L["name"].rstrip(":"))
+        roster_tv.heading("club", text=L["table_club"])
+        roster_tv.heading("cat", text=L["table_category"])
+        roster_tv.column("#0", width=180, anchor="w")
+        roster_tv.column("club", width=120, anchor="w")
+        roster_tv.column("cat", width=100, anchor="w")
+        roster_sb = ttk.Scrollbar(left, orient="vertical", command=roster_tv.yview)
+        roster_tv.configure(yscrollcommand=roster_sb.set)
+        roster_btns = ttk.Frame(left)
+        roster_btns.pack(side="bottom", fill="x", pady=(6, 0))
+        roster_sb.pack(side="right", fill="y")
+        roster_tv.pack(side="top", fill="both", expand=True)
+
+        mid = ttk.Frame(transfer)
+        mid.grid(row=0, column=1, padx=6)
+
+        self._part_manche_lf = ttk.LabelFrame(
+            transfer, text=L["in_manche"].format(manche=key_to_display(self.lang, self.current_manche)),
+            padding=6)
+        self._part_manche_lf.grid(row=0, column=2, sticky="nsew", padx=(6, 0))
+        manche_tv = ttk.Treeview(self._part_manche_lf, columns=("cat",), show="tree headings",
+                                 height=10, selectmode="extended")
+        manche_tv.heading("#0", text=L["name"].rstrip(":"))
+        manche_tv.heading("cat", text=L["table_category"])
+        manche_tv.column("#0", width=200, anchor="w")
+        manche_tv.column("cat", width=110, anchor="w")
+        manche_sb = ttk.Scrollbar(self._part_manche_lf, orient="vertical", command=manche_tv.yview)
+        manche_tv.configure(yscrollcommand=manche_sb.set)
+        manche_sb.pack(side="right", fill="y")
+        manche_tv.pack(side="top", fill="both", expand=True)
+
+        # All-rounds matrix: participant x round membership.
+        matrix_lf = ttk.LabelFrame(page, text=L["allrounds_title"], padding=6)
+        matrix_lf.grid(row=2, column=0, sticky="nsew", padx=4, pady=(8, 2))
+        round_keys = list(SESSION_KEYS)
+        matrix_tv = ttk.Treeview(matrix_lf, columns=tuple(round_keys), show="tree headings",
+                                 height=6, selectmode="none")
+        matrix_tv.heading("#0", text=L["name"].rstrip(":"))
+        matrix_tv.column("#0", width=200, anchor="w")
+        for rk in round_keys:
+            matrix_tv.heading(rk, text=key_to_display(self.lang, rk))
+            matrix_tv.column(rk, width=90, anchor="center")
+        matrix_sb = ttk.Scrollbar(matrix_lf, orient="vertical", command=matrix_tv.yview)
+        matrix_tv.configure(yscrollcommand=matrix_sb.set)
+        matrix_sb.pack(side="right", fill="y")
+        matrix_tv.pack(side="top", fill="both", expand=True)
+
+        def need_selection(tv):
+            sel = tv.selection()
+            if not sel:
+                messagebox.showinfo(L["manage_participants"], L["select_row"])
+                return None
+            return sel
+
+        def refresh_all():
+            in_round = set(self.data["sessions"][self.current_manche]["participants"])
+            roster_tv.delete(*roster_tv.get_children())
+            for name in sorted(self.data["participants"].keys(), key=str.lower):
+                if name in in_round:
+                    continue
+                info = self.data["participants"][name]
+                cat_disp = L["category_options"].get(info.get("category", ""), info.get("category", ""))
+                roster_tv.insert("", "end", iid=name, text=name,
+                                 values=(info.get("club", ""), cat_disp))
+            manche_tv.delete(*manche_tv.get_children())
+            for name in self.current_manche_participants():
+                info = self.data["participants"].get(name, {})
+                cat_disp = L["category_options"].get(info.get("category", ""), info.get("category", ""))
+                manche_tv.insert("", "end", iid=name, text=name, values=(cat_disp,))
+            self._part_manche_lf.config(
+                text=L["in_manche"].format(manche=key_to_display(self.lang, self.current_manche)))
+            matrix_tv.delete(*matrix_tv.get_children())
+            membership = {rk: set(self.data["sessions"][rk]["participants"]) for rk in round_keys}
+            for name in sorted(self.data["participants"].keys(), key=str.lower):
+                vals = tuple("\u2713" if name in membership[rk] else "\u2014" for rk in round_keys)
+                matrix_tv.insert("", "end", iid=name, text=name, values=vals)
+
+        self._participants_refresh = refresh_all
+
+        def add_new():
+            self.participant_form(self.root, on_done=lambda: (refresh_all(), self.refresh_manche_view()))
+
+        def edit_selected():
+            sel = need_selection(roster_tv)
+            if not sel:
+                return
+            self.participant_form(self.root, edit_name=sel[0],
+                                  on_done=lambda: (refresh_all(), self.refresh_manche_view()))
+
+        def remove_selected():
+            sel = need_selection(roster_tv)
+            if not sel:
+                return
+            name = sel[0]
+            if self.custom_dialog(L["remove"], L["confirm_remove_participant"],
+                                  [(L["yes"], True), (L["no"], False)]):
+                self.data["participants"].pop(name, None)
+                for sk in SESSION_KEYS:
+                    sess = self.data["sessions"][sk]
+                    if name in sess["participants"]:
+                        sess["participants"].remove(name)
+                    sess["catches"].pop(name, None)
+                self.update_event()
+                refresh_all()
+                self.refresh_manche_view()
+
+        def add_to_manche():
+            sel = need_selection(roster_tv)
+            if not sel:
+                return
+            sess = self.data["sessions"][self.current_manche]
+            max_per = self.data.get("config", {}).get("max_per_round", 30)
+            current = len(sess["participants"])
+            to_add = [n for n in sel if n not in sess["participants"]]
+            if current + len(to_add) > max_per:
+                room = max(max_per - current, 0)
+                messagebox.showwarning("", L["cfg_round_full"].format(
+                    rnd=key_to_display(self.lang, self.current_manche), maxp=max_per, room=room))
+                if room == 0:
+                    return
+                to_add = to_add[:room]
+            added = False
+            for name in to_add:
+                sess["participants"].append(name)
+                sess["catches"].setdefault(name, [])
+                added = True
+            if added:
+                self.update_event()
+                refresh_all()
+                self.refresh_manche_view()
+            elif len(sel) == 1:
+                messagebox.showinfo(L["manage_participants"],
+                                    L["already_in_manche"].format(name=sel[0]))
+
+        def remove_from_manche():
+            sel = need_selection(manche_tv)
+            if not sel:
+                return
+            if self.custom_dialog(L["remove_from_manche"], L["confirm_remove_from_manche"],
+                                  [(L["yes"], True), (L["no"], False)]):
+                sess = self.data["sessions"][self.current_manche]
+                for name in sel:
+                    if name in sess["participants"]:
+                        sess["participants"].remove(name)
+                    sess["catches"].pop(name, None)
+                self.update_event()
+                refresh_all()
+                self.refresh_manche_view()
+
+        def suggest_finalists():
+            if self.current_manche != "final":
+                messagebox.showinfo(L["manage_participants"], L["qual_only_final"])
+                return
+
+            def tie_resolver(round_key, names, slots):
+                return self._ask_tie_choice(self.root, round_key, names, slots)
+
+            result = self.compute_qualifiers(tie_resolver=tie_resolver)
+            qualified = result["qualified"]
+            if not qualified:
+                messagebox.showinfo(L["manage_participants"], L["qual_none"])
+                return
+            sess = self.data["sessions"]["final"]
+            added = 0
+            for name in sorted(qualified, key=str.lower):
+                if name not in sess["participants"]:
+                    sess["participants"].append(name)
+                    sess["catches"].setdefault(name, [])
+                    added += 1
+            self.update_event()
+            refresh_all()
+            self.refresh_manche_view()
+            messagebox.showinfo(L["manage_participants"], L["qual_done"].format(n=added))
+
+        self.manage_btn = ttk.Button(roster_btns, text=L["add_participant"], command=add_new)
+        self.manage_btn.pack(side="left", padx=2)
+        ttk.Button(roster_btns, text=L["edit"], command=edit_selected).pack(side="left", padx=2)
+        ttk.Button(roster_btns, text=L["remove"], command=remove_selected).pack(side="left", padx=2)
+        ttk.Button(mid, text=L["add_to_manche"], command=add_to_manche).pack(pady=10, fill="x")
+        ttk.Button(mid, text=L["remove_from_manche"], command=remove_from_manche).pack(pady=10, fill="x")
+        ttk.Button(mid, text=L["suggest_finalists"], command=suggest_finalists).pack(pady=(20, 4), fill="x")
+
+        refresh_all()
 
     # ---- page: Rankings ----------------------------------------------------
     def _build_page_rankings(self, page):
@@ -1729,10 +1980,34 @@ class FishingApp:
         return s == LANGUAGES[self.lang]["catch_recorded_group"]
 
     def on_manche_changed(self, event=None):
-        self.current_manche = display_to_key(self.lang, self.manche_var.get())
+        # Multiple pages can carry a round selector (operating screen and the
+        # Participants page); read whichever fired, then sync them all.
+        disp = None
+        if event is not None and getattr(event, "widget", None) is not None:
+            try:
+                disp = event.widget.get()
+            except Exception:
+                disp = None
+        if disp is None and self.manche_var is not None:
+            disp = self.manche_var.get()
+        if disp:
+            self.current_manche = display_to_key(self.lang, disp)
+        self._sync_round_selectors()
         self.refresh_manche_view()
         self._update_combined_state()
         self._update_highlight_state()
+        if getattr(self, "_participants_refresh", None) is not None:
+            self._participants_refresh()
+
+    def _sync_round_selectors(self):
+        """Point every registered round selector at the current round so the
+        operating screen and Participants page never drift apart."""
+        disp = key_to_display(self.lang, self.current_manche)
+        for combo in getattr(self, "_round_selectors", []):
+            try:
+                combo.set(disp)
+            except Exception:
+                pass
 
     def _update_highlight_state(self):
         """Finalist highlighting applies to round reports only, not the final's
