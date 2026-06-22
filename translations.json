@@ -307,7 +307,11 @@
     "col_weight": "Weight",
     "participants_locked_hint": "Configure the event (rounds, participants per round, qualifiers) on the Event page, then lock it here to start building the rosters.",
     "lock_and_manage": "Lock configuration & manage participants",
-    "allrounds_title": "All rounds — who is in which round"
+    "allrounds_title": "All rounds — who is in which round",
+    "settings_group_branding": "Branding",
+    "settings_group_events": "Events",
+    "settings_group_reports": "Reports",
+    "settings_group_invoices": "Invoices"
   },
   "French": {
     "title": "Registre de Concours de Pêche Fëscherfrënn Stengefort",
@@ -617,7 +621,11 @@
     "col_weight": "Poids",
     "participants_locked_hint": "Configurez le concours (manches, participants par manche, qualifiés) sur la page Concours, puis verrouillez ici pour composer les listes.",
     "lock_and_manage": "Verrouiller la configuration & gérer les participants",
-    "allrounds_title": "Toutes les manches — qui est dans quelle manche"
+    "allrounds_title": "Toutes les manches — qui est dans quelle manche",
+    "settings_group_branding": "Image de marque",
+    "settings_group_events": "Concours",
+    "settings_group_reports": "Rapports",
+    "settings_group_invoices": "Factures"
   },
   "German": {
     "title": "Fëscherfrënn Stengefort Angelwettbewerb Register",
@@ -927,7 +935,11 @@
     "col_weight": "Gewicht",
     "participants_locked_hint": "Konfigurieren Sie den Wettbewerb (Runden, Teilnehmer pro Runde, Qualifikanten) auf der Wettbewerbsseite und sperren Sie ihn hier, um die Listen zu erstellen.",
     "lock_and_manage": "Konfiguration sperren & Teilnehmer verwalten",
-    "allrounds_title": "Alle Runden — wer ist in welcher Runde"
+    "allrounds_title": "Alle Runden — wer ist in welcher Runde",
+    "settings_group_branding": "Branding",
+    "settings_group_events": "Wettbewerb",
+    "settings_group_reports": "Berichte",
+    "settings_group_invoices": "Rechnungen"
   },
   "Luxembourgish": {
     "title": "Fëscherfrënn Stengefort Fëschkonkurrenz Register",
@@ -1237,6 +1249,10 @@
     "col_weight": "Gewiicht",
     "participants_locked_hint": "Konfiguréiert de Concours (Manchen, Participanten pro Manche, Qualifizéierter) op der Concours-Säit, a späert en hei fir d'Lëschten ze maachen.",
     "lock_and_manage": "Konfiguratioun spären & Participante verwalten",
-    "allrounds_title": "All Manchen — wien ass an wéi enger Manche"
+    "allrounds_title": "All Manchen — wien ass an wéi enger Manche",
+    "settings_group_branding": "Branding",
+    "settings_group_events": "Concours",
+    "settings_group_reports": "Rapporten",
+    "settings_group_invoices": "Rechnungen"
   }
 }

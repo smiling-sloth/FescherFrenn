@@ -814,7 +814,13 @@ class FishingApp:
     # ---- page: Event -------------------------------------------------------
     def _build_page_event(self, page):
         L = LANGUAGES[self.lang]
-        event_frame = ttk.LabelFrame(page, text=L["event_details"], padding=5)
+        page.rowconfigure(1, weight=1)
+        page.columnconfigure(0, weight=1)
+
+        top = ttk.Frame(page)
+        top.grid(row=0, column=0, sticky="ew")
+
+        event_frame = ttk.LabelFrame(top, text=L["event_details"], padding=5)
         event_frame.pack(fill="x", padx=4, pady=4)
         event_frame.columnconfigure(1, weight=1)
         ttk.Label(event_frame, text=L["event_name"], font=("Arial", self.font_size)).grid(row=0, column=0, pady=3, sticky="w")
@@ -882,15 +888,115 @@ class FishingApp:
             self.cfg_max_per_round.config(state="disabled")
             self.cfg_xproc.config(state="disabled")
 
-        # Event-level actions.
-        actions = ttk.LabelFrame(page, text=L["nav_event"], padding=5)
+        # Event-level actions (the events list lives below, so no "Events" button).
+        actions = ttk.LabelFrame(top, text=L["nav_event"], padding=5)
         actions.pack(fill="x", padx=4, pady=4)
         self.reset_btn = ttk.Button(actions, text=L["reset_event"], command=self.reset_event)
         self.reset_btn.pack(side=tk.LEFT, padx=3, pady=2)
         self.export_btn = ttk.Button(actions, text=L["export_event"], command=self.export_event)
         self.export_btn.pack(side=tk.LEFT, padx=3, pady=2)
-        self.manage_events_btn = ttk.Button(actions, text=L["events_btn"], command=self.open_manage_events_panel)
-        self.manage_events_btn.pack(side=tk.LEFT, padx=3, pady=2)
+
+        # -- bottom: existing events to open / import (in-page, scrollable) --
+        ev_lf = ttk.LabelFrame(page, text=L["manage_events_title"], padding=6)
+        ev_lf.grid(row=1, column=0, sticky="nsew", padx=4, pady=(2, 4))
+        ev_btns = ttk.Frame(ev_lf)
+        ev_btns.pack(side="bottom", fill="x", pady=(6, 0))
+        list_holder = ttk.Frame(ev_lf)
+        list_holder.pack(side="top", fill="both", expand=True)
+        ecols = ("date", "title", "invoices", "size")
+        ev_tv = ttk.Treeview(list_holder, columns=ecols, show="headings", height=8)
+        ev_tv.heading("date", text=L["events_col_date"])
+        ev_tv.heading("title", text=L["events_col_title"])
+        ev_tv.heading("invoices", text=L["events_col_invoices"])
+        ev_tv.heading("size", text=L["events_col_size"])
+        ev_tv.column("date", width=90, anchor="center", stretch=False)
+        ev_tv.column("title", width=360, anchor="w")
+        ev_tv.column("invoices", width=80, anchor="center", stretch=False)
+        ev_tv.column("size", width=90, anchor="e", stretch=False)
+        ev_update = self._attach_treeview_scroll(ev_tv, list_holder, horizontal=True)
+        ev_state = {"events": []}
+
+        def reload_list():
+            # Flush the current event to its folder first so it appears in the
+            # list (quiet; only when it has the mandatory fields).
+            try:
+                ev = self.data.get("event", {})
+                if ev.get("name") and ev.get("location"):
+                    folder = get_event_folder(ev)
+                    os.makedirs(folder, exist_ok=True)
+                    with open(os.path.join(folder, f"{folder}.json"), "w", encoding="utf-8") as fh:
+                        json.dump(self.data, fh, indent=4, ensure_ascii=False)
+            except Exception as e:
+                logging.error(f"flush current event before list failed: {e}")
+            ev_state["events"] = self._scan_local_events()
+            ev_tv.delete(*ev_tv.get_children())
+            if ev_state["events"]:
+                for idx, ev in enumerate(ev_state["events"]):
+                    ev_tv.insert("", "end", iid=str(idx),
+                                 values=(ev["date"], ev["name"], ev["invoices"],
+                                         self._human_size(ev["bytes"])))
+            else:
+                ev_tv.insert("", "end", values=("", L["events_no_events"], "", ""))
+            ev_update()
+
+        def ev_selected():
+            sel = ev_tv.selection()
+            if not sel:
+                messagebox.showinfo(L["manage_events_title"], L["events_select_row"])
+                return None
+            try:
+                return ev_state["events"][int(sel[0])]
+            except (ValueError, IndexError):
+                return None
+
+        def open_selected(_evt=None):
+            ev = ev_selected()
+            if not ev:
+                return
+            try:
+                self._load_event_file(ev["path"])  # rebuilds the UI (and this list)
+            except Exception as e:
+                logging.error(f"events open failed: {e}")
+                messagebox.showerror(L["error"], str(e))
+
+        def browse():
+            self._browse_import()
+
+        def delete_selected():
+            ev = ev_selected()
+            if not ev:
+                return
+            cur = self.data.get("event", {})
+            if cur.get("name"):
+                if os.path.basename(ev["folder"]) == get_event_folder(cur):
+                    messagebox.showwarning(L["manage_events_title"], L["events_del_current_blocked"])
+                    return
+            if not messagebox.askyesno("", L["events_del_confirm1"].format(
+                    name=ev["name"], date=ev["date"], files=ev["files"], inv=ev["invoices"])):
+                return
+            if ev["invoices"] > 0:
+                typed = self._prompt_text(self.root, L["events_delete"],
+                                          L["events_del_confirm2_invoices"].format(inv=ev["invoices"]))
+                if typed is None:
+                    return
+                if typed.strip() != ev["name"]:
+                    messagebox.showinfo(L["events_delete"], L["events_del_name_mismatch"])
+                    return
+            try:
+                import shutil
+                shutil.rmtree(ev["folder"])
+                messagebox.showinfo(L["manage_events_title"], L["events_del_done"].format(name=ev["name"]))
+                reload_list()
+            except Exception as e:
+                logging.error(f"delete event failed: {e}")
+                messagebox.showerror(L["error"], str(e))
+
+        ev_tv.bind("<Double-1>", open_selected)
+        self.manage_events_btn = ttk.Button(ev_btns, text=L["events_open"], command=open_selected)
+        self.manage_events_btn.pack(side="left", padx=3)
+        ttk.Button(ev_btns, text=L["events_browse"], command=browse).pack(side="left", padx=3)
+        ttk.Button(ev_btns, text=L["events_delete"], command=delete_selected).pack(side="right", padx=3)
+        reload_list()
 
     # ---- page: Log Catch & Rankings (operating screen) -------------------
     def _build_page_catch(self, page):
@@ -898,8 +1004,8 @@ class FishingApp:
         cols = ttk.Frame(page)
         cols.pack(fill="both", expand=True)
         cols.columnconfigure(0, weight=0, minsize=300)   # catch entry (natural)
-        cols.columnconfigure(1, weight=3)                # live board (widest)
-        cols.columnconfigure(2, weight=2)                # overall / categories
+        cols.columnconfigure(1, weight=5)                # live board (more columns)
+        cols.columnconfigure(2, weight=3)                # overall / categories
         cols.rowconfigure(0, weight=1)
 
         # -- left column: round selector + catch entry --
@@ -1070,12 +1176,14 @@ class FishingApp:
             transfer, text=L["in_manche"].format(manche=key_to_display(self.lang, self.current_manche)),
             padding=6)
         self._part_manche_lf.grid(row=0, column=2, sticky="nsew", padx=(6, 0))
-        manche_tv = ttk.Treeview(self._part_manche_lf, columns=("cat",), show="tree headings",
+        manche_tv = ttk.Treeview(self._part_manche_lf, columns=("club", "cat"), show="tree headings",
                                  height=10, selectmode="extended")
         manche_tv.heading("#0", text=L["name"].rstrip(":"))
+        manche_tv.heading("club", text=L["table_club"])
         manche_tv.heading("cat", text=L["table_category"])
-        manche_tv.column("#0", width=200, anchor="w")
-        manche_tv.column("cat", width=110, anchor="w")
+        manche_tv.column("#0", width=170, anchor="w")
+        manche_tv.column("club", width=110, anchor="w")
+        manche_tv.column("cat", width=100, anchor="w")
         manche_sb = ttk.Scrollbar(self._part_manche_lf, orient="vertical", command=manche_tv.yview)
         manche_tv.configure(yscrollcommand=manche_sb.set)
         manche_sb.pack(side="right", fill="y")
@@ -1085,13 +1193,18 @@ class FishingApp:
         matrix_lf = ttk.LabelFrame(page, text=L["allrounds_title"], padding=6)
         matrix_lf.grid(row=2, column=0, sticky="nsew", padx=4, pady=(8, 2))
         round_keys = list(SESSION_KEYS)
-        matrix_tv = ttk.Treeview(matrix_lf, columns=tuple(round_keys), show="tree headings",
+        matrix_cols = ("club", "cat") + tuple(round_keys)
+        matrix_tv = ttk.Treeview(matrix_lf, columns=matrix_cols, show="tree headings",
                                  height=6, selectmode="none")
         matrix_tv.heading("#0", text=L["name"].rstrip(":"))
         # Fixed, readable widths (no stretch) so that with many rounds the table
         # overflows horizontally and scrolls/swipes rather than squashing columns
         # below a legible minimum.
-        matrix_tv.column("#0", width=200, minwidth=140, anchor="w", stretch=False)
+        matrix_tv.column("#0", width=180, minwidth=130, anchor="w", stretch=False)
+        matrix_tv.heading("club", text=L["table_club"])
+        matrix_tv.column("club", width=120, minwidth=80, anchor="w", stretch=False)
+        matrix_tv.heading("cat", text=L["table_category"])
+        matrix_tv.column("cat", width=100, minwidth=70, anchor="w", stretch=False)
         for rk in round_keys:
             matrix_tv.heading(rk, text=key_to_display(self.lang, rk))
             matrix_tv.column(rk, width=84, minwidth=64, anchor="center", stretch=False)
@@ -1118,14 +1231,17 @@ class FishingApp:
             for name in self.current_manche_participants():
                 info = self.data["participants"].get(name, {})
                 cat_disp = L["category_options"].get(info.get("category", ""), info.get("category", ""))
-                manche_tv.insert("", "end", iid=name, text=name, values=(cat_disp,))
+                manche_tv.insert("", "end", iid=name, text=name, values=(info.get("club", ""), cat_disp))
             self._part_manche_lf.config(
                 text=L["in_manche"].format(manche=key_to_display(self.lang, self.current_manche)))
             matrix_tv.delete(*matrix_tv.get_children())
             membership = {rk: set(self.data["sessions"][rk]["participants"]) for rk in round_keys}
             for name in sorted(self.data["participants"].keys(), key=str.lower):
-                vals = tuple("\u2713" if name in membership[rk] else "\u2014" for rk in round_keys)
-                matrix_tv.insert("", "end", iid=name, text=name, values=vals)
+                info = self.data["participants"].get(name, {})
+                cat_disp = L["category_options"].get(info.get("category", ""), info.get("category", ""))
+                marks = tuple("\u2713" if name in membership[rk] else "\u2014" for rk in round_keys)
+                matrix_tv.insert("", "end", iid=name, text=name,
+                                 values=(info.get("club", ""), cat_disp) + marks)
             self._matrix_scroll_update()
 
         self._participants_refresh = refresh_all
@@ -1238,8 +1354,12 @@ class FishingApp:
     # ---- page: Rankings ----------------------------------------------------
     def _build_page_rankings(self, page):
         L = LANGUAGES[self.lang]
+        page.columnconfigure(0, weight=1)
+        page.rowconfigure(1, weight=1)   # reports list stretches
+        page.rowconfigure(2, weight=1)   # invoices list stretches
+
         settings_frame = ttk.LabelFrame(page, text=L["report_settings_label"], padding=5)
-        settings_frame.pack(fill="x", padx=4, pady=3)
+        settings_frame.grid(row=0, column=0, sticky="ew", padx=4, pady=3)
         ttk.Label(settings_frame, text=f'\u2713 {L["chk_event_summary"]}',
                   font=("Arial", self.font_size - 2, "italic"), foreground="gray").pack(anchor="w", pady=2)
         ttk.Checkbutton(settings_frame, text=L["chk_individual"],
@@ -1272,23 +1392,310 @@ class FishingApp:
         self.highlight_colour_combo.bind("<<ComboboxSelected>>", _on_colour_pick)
         self.highlight_colour_combo.pack(side="left", padx=6)
         self._update_highlight_state()
+        self.report_btn = ttk.Button(settings_frame, text=L["generate_report"], command=self.generate_report)
+        self.report_btn.pack(anchor="w", pady=(6, 2))
 
-        btn_frame = ttk.Frame(page)
-        btn_frame.pack(fill="x", padx=4, pady=3)
-        self.report_btn = ttk.Button(btn_frame, text=L["generate_report"], command=self.generate_report)
-        self.report_btn.pack(side=tk.LEFT, padx=3)
-        self.open_report_btn = ttk.Button(btn_frame, text=L["reports_btn"], command=self.open_reports_panel)
-        self.open_report_btn.pack(side=tk.LEFT, padx=3)
-        self.invoices_btn = ttk.Button(btn_frame, text=L["invoices_btn"], command=self.open_invoices_manager)
-        self.invoices_btn.pack(side=tk.LEFT, padx=3)
+        # -- Generated reports block (like the Events list) --
+        rep_lf = ttk.LabelFrame(page, text=L["reports_panel_title"], padding=6)
+        rep_lf.grid(row=1, column=0, sticky="nsew", padx=4, pady=3)
+        rep_btns = ttk.Frame(rep_lf)
+        rep_btns.pack(side="bottom", fill="x", pady=(6, 0))
+        rep_holder = ttk.Frame(rep_lf)
+        rep_holder.pack(side="top", fill="both", expand=True)
+        rep_tv = ttk.Treeview(rep_holder, columns=("round", "file"), show="headings", height=6)
+        rep_tv.heading("round", text=L["reports_col_round"])
+        rep_tv.heading("file", text=L["reports_col_file"])
+        rep_tv.column("round", width=160, anchor="w", stretch=False)
+        rep_tv.column("file", width=360, anchor="w")
+        rep_update = self._attach_treeview_scroll(rep_tv, rep_holder, horizontal=True)
+        rep_state = {"files": []}
+
+        def reload_reports():
+            rep_state["files"] = self._event_report_files()
+            rep_tv.delete(*rep_tv.get_children())
+            if rep_state["files"]:
+                for idx, (label, path) in enumerate(rep_state["files"]):
+                    rep_tv.insert("", "end", iid=str(idx), values=(label, os.path.basename(path)))
+            else:
+                rep_tv.insert("", "end", values=("", L["reports_no_files"]))
+            rep_update()
+        self._reports_reload = reload_reports
+
+        def open_report(_evt=None):
+            sel = rep_tv.selection()
+            if not sel:
+                return
+            try:
+                idx = int(sel[0])
+            except ValueError:
+                return
+            self.open_file_external(rep_state["files"][idx][1])
+        rep_tv.bind("<Double-1>", open_report)
+        ttk.Button(rep_btns, text=L["reports_open"], command=open_report).pack(side="left", padx=3)
+
+        # -- Invoices block (list of generated invoices; manage opens the editor) --
+        inv_lf = ttk.LabelFrame(page, text=L["manage_invoices"], padding=6)
+        inv_lf.grid(row=2, column=0, sticky="nsew", padx=4, pady=3)
+        inv_btns = ttk.Frame(inv_lf)
+        inv_btns.pack(side="bottom", fill="x", pady=(6, 0))
+        inv_holder = ttk.Frame(inv_lf)
+        inv_holder.pack(side="top", fill="both", expand=True)
+        icols = ("number", "date", "client", "amount")
+        inv_tv = ttk.Treeview(inv_holder, columns=icols, show="headings", height=6)
+        for c, h, w in zip(icols, [L["inv_number"], L["inv_date"], L["inv_col_client"], L["inv_col_amount"]],
+                           [160, 110, 320, 100]):
+            inv_tv.heading(c, text=h)
+            inv_tv.column(c, width=w, anchor="w" if c in ("number", "client") else "center",
+                          stretch=(c == "client"))
+        inv_update = self._attach_treeview_scroll(inv_tv, inv_holder, horizontal=True)
+
+        def reload_invoices():
+            inv_tv.delete(*inv_tv.get_children())
+            invs = self.data.get("invoices", [])
+            if invs:
+                for idx, inv in enumerate(invs):
+                    inv_tv.insert("", "end", iid=str(idx), values=(
+                        inv.get("number", ""), inv.get("date", ""),
+                        inv.get("recipient_name", ""), self.fmt_money(inv.get("amount", 0))))
+            else:
+                inv_tv.insert("", "end", values=("", "", L["no_invoices"], ""))
+            inv_update()
+        self._invoices_reload = reload_invoices
+
+        def open_invoice_pdf(_evt=None):
+            sel = inv_tv.selection()
+            if not sel:
+                return
+            try:
+                inv = self.data.get("invoices", [])[int(sel[0])]
+            except (ValueError, IndexError):
+                return
+            self.open_file_external(self._invoice_pdf_path(inv))
+
+        def manage_invoices():
+            self.open_invoices_manager()   # modal; refresh the list when it returns
+            reload_invoices()
+        inv_tv.bind("<Double-1>", open_invoice_pdf)
+        ttk.Button(inv_btns, text=L["reports_open"], command=open_invoice_pdf).pack(side="left", padx=3)
+        self.invoices_btn = ttk.Button(inv_btns, text=L["invoices_btn"], command=manage_invoices)
+        self.invoices_btn.pack(side="left", padx=3)
+
+        reload_reports()
+        reload_invoices()
 
     # ---- page: Settings & Tools -------------------------------------------
     def _build_page_settings(self, page):
         L = LANGUAGES[self.lang]
-        box = ttk.LabelFrame(page, text=L["nav_settings"], padding=8)
-        box.pack(fill="x", padx=4, pady=4)
-        self.settings_btn = ttk.Button(box, text=L["settings_btn"], command=self.open_settings_dialog)
-        self.settings_btn.pack(side=tk.LEFT, padx=3, pady=2)
+        self._st_entries = {}
+        self._st_banner_map = {}
+
+        def add_row(parent, key, label, width=32):
+            r = parent.grid_size()[1]
+            ttk.Label(parent, text=label, font=("Arial", self.font_size)).grid(
+                row=r, column=0, sticky="w", pady=3, padx=(0, 8))
+            e = ttk.Entry(parent, font=("Arial", self.font_size), width=width)
+            e.grid(row=r, column=1, sticky="ew", pady=3)
+            val = CONFIG.get(key, "")
+            if isinstance(val, list):
+                val = " ".join(val)
+            e.insert(0, str(val))
+            self._st_entries[key] = e
+
+        # ---- Branding ----
+        g_brand = ttk.LabelFrame(page, text=L["settings_group_branding"], padding=8)
+        g_brand.pack(fill="x", padx=4, pady=(4, 6))
+        g_brand.columnconfigure(1, weight=1)
+        ttk.Label(g_brand, text=L["asset_note"].format(max=self._human_size(self.ASSET_MAX_BYTES)),
+                  font=("Arial", self.font_size - 3), foreground="#555").grid(
+                      row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
+        status_labels = {}
+
+        def refresh_status(which):
+            present = self._asset_present(which)
+            status_labels[which].config(text=L["asset_present"] if present else L["asset_absent"],
+                                        foreground="#2e7d32" if present else "#999")
+
+        def make_asset_row(r, which, label_key):
+            ttk.Label(g_brand, text=L[label_key], font=("Arial", self.font_size)).grid(
+                row=r, column=0, sticky="w", pady=3, padx=(0, 8))
+            st = ttk.Label(g_brand, font=("Arial", self.font_size - 2))
+            st.grid(row=r, column=1, sticky="w")
+            status_labels[which] = st
+            bf = ttk.Frame(g_brand)
+            bf.grid(row=r, column=2, sticky="e")
+
+            def upload():
+                src = filedialog.askopenfilename(
+                    title=L["asset_upload"],
+                    filetypes=[("Images", "*.png *.jpg *.jpeg"), ("PNG", "*.png"), ("JPEG", "*.jpg *.jpeg")])
+                if not src:
+                    return
+                if self._import_asset(which, src):
+                    refresh_status(which)
+                    messagebox.showinfo("", L["asset_saved"].format(which=L[label_key]))
+
+            def remove():
+                if not self._asset_present(which):
+                    return
+                if messagebox.askyesno("", L["asset_remove_q"].format(which=L[label_key])):
+                    if self._remove_asset(which):
+                        refresh_status(which)
+                        messagebox.showinfo("", L["asset_removed"].format(which=L[label_key]))
+            ttk.Button(bf, text=L["asset_upload"], command=upload).pack(side="left", padx=2)
+            ttk.Button(bf, text=L["asset_remove"], command=remove).pack(side="left", padx=2)
+            refresh_status(which)
+
+        make_asset_row(1, "logo", "asset_logo")
+        make_asset_row(2, "watermark", "asset_watermark")
+        make_asset_row(3, "icon", "asset_icon")
+        ttk.Label(g_brand, text=L["settings_branding_restart_note"],
+                  font=("Arial", max(8, self.font_size - 3)), foreground="#888",
+                  wraplength=520, justify="left").grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
+
+        # ---- Events ----
+        g_events = ttk.LabelFrame(page, text=L["settings_group_events"], padding=8)
+        g_events.pack(fill="x", padx=4, pady=6)
+        g_events.columnconfigure(1, weight=1)
+        ttk.Label(g_events, text=L["settings_field_max_rounds"], font=("Arial", self.font_size)).grid(
+            row=0, column=0, sticky="w", pady=3, padx=(0, 8))
+        self._st_max_rounds = ttk.Entry(g_events, font=("Arial", self.font_size), width=6, validate="key",
+                                        validatecommand=(self.root.register(self.validate_round_ceiling), "%P"))
+        self._st_max_rounds.grid(row=0, column=1, sticky="w")
+        self._st_max_rounds.insert(0, str(CONFIG.get("max_round_count", DEFAULT_MAX_ROUNDS)))
+        ttk.Label(g_events, text=L["settings_field_max_participants"], font=("Arial", self.font_size)).grid(
+            row=1, column=0, sticky="w", pady=3, padx=(0, 8))
+        self._st_max_parts = ttk.Entry(g_events, font=("Arial", self.font_size), width=6, validate="key",
+                                       validatecommand=(self.root.register(self.validate_participants_ceiling), "%P"))
+        self._st_max_parts.grid(row=1, column=1, sticky="w")
+        self._st_max_parts.insert(0, str(CONFIG.get("max_participants_count", DEFAULT_MAX_PARTICIPANTS)))
+        self._st_def_track = tk.BooleanVar(value=bool(CONFIG.get("default_track_details", False)))
+        ttk.Checkbutton(g_events, text=L["settings_default_track"], variable=self._st_def_track).grid(
+            row=2, column=0, columnspan=2, sticky="w", pady=(8, 1))
+
+        # ---- Reports ----
+        g_reports = ttk.LabelFrame(page, text=L["settings_group_reports"], padding=8)
+        g_reports.pack(fill="x", padx=4, pady=6)
+        self._st_def_highlight = tk.BooleanVar(value=bool(CONFIG.get("default_report_highlight", True)))
+        self._st_def_individual = tk.BooleanVar(value=bool(CONFIG.get("default_individual_reports", False)))
+        self._st_def_combined = tk.BooleanVar(value=bool(CONFIG.get("default_combined_ranking", False)))
+        _restart = f'  ({L["settings_restart_note"]})'
+        ttk.Checkbutton(g_reports, text=L["settings_default_highlight"], variable=self._st_def_highlight).grid(
+            row=0, column=0, sticky="w", pady=1)
+        indiv_row = ttk.Frame(g_reports)
+        indiv_row.grid(row=1, column=0, sticky="w", pady=1)
+        ttk.Checkbutton(indiv_row, text=L["settings_default_individual"], variable=self._st_def_individual).pack(side="left")
+        ttk.Label(indiv_row, text=_restart, font=("Arial", max(8, self.font_size - 2)), foreground="#888").pack(side="left")
+        comb_row = ttk.Frame(g_reports)
+        comb_row.grid(row=2, column=0, sticky="w", pady=1)
+        self._st_combined_chk = ttk.Checkbutton(comb_row, text=L["settings_default_combined"], variable=self._st_def_combined)
+        self._st_combined_chk.pack(side="left")
+        ttk.Label(comb_row, text=_restart, font=("Arial", max(8, self.font_size - 2)), foreground="#888").pack(side="left")
+
+        def _sync_combined(*_a):
+            if self._st_def_individual.get():
+                self._st_combined_chk.state(["!disabled"])
+            else:
+                self._st_def_combined.set(False)
+                self._st_combined_chk.state(["disabled"])
+        self._st_def_individual.trace_add("write", _sync_combined)
+        _sync_combined()
+
+        # ---- Invoices ----
+        g_inv = ttk.LabelFrame(page, text=L["settings_group_invoices"], padding=8)
+        g_inv.pack(fill="x", padx=4, pady=6)
+        g_inv.columnconfigure(1, weight=1)
+        for k, lk in [
+            ("invoice_prefix", "settings_field_invoice_prefix"),
+            ("issuer_name", "settings_field_issuer_name"),
+            ("issuer_legal_name", "settings_field_issuer_legal_name"),
+            ("issuer_house_number", "settings_field_house_number"),
+            ("issuer_street", "settings_field_street"),
+            ("issuer_postcode_country", "settings_field_postcode_country"),
+            ("issuer_postcode_digits", "settings_field_postcode_digits"),
+            ("issuer_city", "settings_field_city"),
+            ("issuer_country", "settings_field_country"),
+            ("issuer_phone", "settings_field_phone"),
+            ("issuer_email", "settings_field_email"),
+        ]:
+            add_row(g_inv, k, L[lk])
+        _bc_row = g_inv.grid_size()[1]
+        ttk.Label(g_inv, text=L["settings_field_banner_colour"], font=("Arial", self.font_size)).grid(
+            row=_bc_row, column=0, sticky="w", pady=3, padx=(0, 8))
+        banner_labels = [(L["colour_none"], "none"), (L["col_green"], "green"),
+                         (L["col_yellow"], "yellow"), (L["col_blue"], "blue"),
+                         (L["col_grey"], "grey"), (L["col_red"], "red")]
+        self._st_banner_map = {lbl: key for lbl, key in banner_labels}
+        _banner_key_to_label = {key: lbl for lbl, key in banner_labels}
+        self._st_banner_combo = ttk.Combobox(g_inv, state="readonly", width=12,
+                                             values=[lbl for lbl, _ in banner_labels],
+                                             font=("Arial", self.font_size))
+        self._st_banner_combo.grid(row=_bc_row, column=1, sticky="w", pady=3)
+        self._st_banner_combo.set(_banner_key_to_label.get(CONFIG.get("invoice_banner_colour", "blue"),
+                                                          _banner_key_to_label["blue"]))
+        _bk_row = g_inv.grid_size()[1]
+        ttk.Label(g_inv, text=L["settings_bank_section"], font=("Arial", self.font_size, "bold")).grid(
+            row=_bk_row, column=0, columnspan=2, sticky="w", pady=(12, 2))
+        for k, lk in [
+            ("bank_account_holder", "settings_field_bank_account_holder"),
+            ("bank_name", "settings_field_bank_name"),
+            ("iban_groups", "settings_field_iban"),
+            ("payment_terms_days", "settings_field_payment_terms"),
+        ]:
+            add_row(g_inv, k, L[lk])
+
+        save_bar = ttk.Frame(page)
+        save_bar.pack(fill="x", padx=4, pady=(2, 6))
+        self.settings_btn = ttk.Button(save_bar, text=L["settings_save"], command=self._settings_do_save)
+        self.settings_btn.pack(side="left")
+
+    def _settings_do_save(self):
+        L = LANGUAGES[self.lang]
+        new_cfg = dict(CONFIG)
+        for k, e in self._st_entries.items():
+            new_cfg[k] = e.get().strip()
+        raw_norm = "".join(new_cfg.get("iban_groups", "").split()).upper()
+        groups = [raw_norm[i:i + 4] for i in range(0, len(raw_norm), 4)]
+        if not self._validate_iban_groups(groups):
+            messagebox.showerror("Error", L["settings_invalid_iban"])
+            return
+        new_cfg["iban_groups"] = groups
+        pc_country = new_cfg.get("issuer_postcode_country", "").upper()
+        pc_digits = new_cfg.get("issuer_postcode_digits", "")
+        if not (1 <= len(pc_country) <= 2 and pc_country.isalpha() and pc_digits.isdigit() and len(pc_digits) == 4):
+            messagebox.showerror("Error", L["settings_invalid_postcode"])
+            return
+        new_cfg["issuer_postcode_country"] = pc_country
+        phone = new_cfg.get("issuer_phone", "")
+        if phone and not all(ch.isdigit() or ch in "+ " for ch in phone):
+            messagebox.showerror("Error", L["settings_invalid_phone"])
+            return
+        import re as _re
+        if not _re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", new_cfg.get("issuer_email", "")):
+            messagebox.showerror("Error", L["settings_invalid_email"])
+            return
+        try:
+            new_cfg["payment_terms_days"] = int(new_cfg.get("payment_terms_days", 30))
+        except ValueError:
+            new_cfg["payment_terms_days"] = 30
+        try:
+            mrc = int(self._st_max_rounds.get().strip())
+        except ValueError:
+            mrc = DEFAULT_MAX_ROUNDS
+        new_cfg["max_round_count"] = max(1, min(mrc, ROUND_CEILING_HARD_MAX))
+        try:
+            mpc = int(self._st_max_parts.get().strip())
+        except ValueError:
+            mpc = DEFAULT_MAX_PARTICIPANTS
+        new_cfg["max_participants_count"] = max(1, min(mpc, PARTICIPANTS_CEILING_HARD_MAX))
+        new_cfg["invoice_banner_colour"] = self._st_banner_map.get(self._st_banner_combo.get(), "blue")
+        new_cfg["default_track_details"] = bool(self._st_def_track.get())
+        new_cfg["default_report_highlight"] = bool(self._st_def_highlight.get())
+        new_cfg["default_individual_reports"] = bool(self._st_def_individual.get())
+        new_cfg["default_combined_ranking"] = bool(self._st_def_combined.get() and self._st_def_individual.get())
+        if save_config(new_cfg):
+            CONFIG.clear()
+            CONFIG.update(new_cfg)   # reflect saved values in memory for this session
+            messagebox.showinfo("", L["settings_saved"])
 
     def _apply_details_enabled_state(self):
         """Grey out / lock the length & type inputs when the event doesn't track them.
@@ -1795,9 +2202,10 @@ class FishingApp:
                     "?": ("#f3cd86", "#854F0B"), "D": ("#eda9a9", "#791F1F")}
 
     def live_board_data(self):
-        """Structured rows for the live board: (badge|None, place, name, weight_str).
-        Returns (rows, is_final). The full field is returned now — the panel
-        scrolls when it overflows rather than capping the list."""
+        """Structured rows for the live board:
+        (badge|None, place, name, club, category_display, weight_str), is_final.
+        Full field (the panel scrolls when it overflows)."""
+        L = LANGUAGES[self.lang]
         mk = self.current_manche
         ranked = self.round_weight_ranking(mk)
         is_final = (mk == "final")
@@ -1805,7 +2213,9 @@ class FishingApp:
         rows = []
         for (name, w, place) in ranked:
             b = None if is_final else badges.get(name, "D")
-            rows.append((b, place, name, f"{self.fmt_weight(w)} g"))
+            info = self.data["participants"].get(name, {})
+            cat = L["category_options"].get(info.get("category", ""), info.get("category", ""))
+            rows.append((b, place, name, info.get("club", ""), cat, f"{self.fmt_weight(w)} g"))
         return rows, is_final
 
     def overall_podium_data(self):
@@ -1814,6 +2224,10 @@ class FishingApp:
         (all participants, pooled weight) then Ladies/U20/U15/U10 best one each;
         empty categories omitted. Awards only; no effect on the final."""
         L = LANGUAGES[self.lang]
+        parts = self.data.get("participants", {})
+
+        def _club(n):
+            return parts.get(n, {}).get("club", "")
         pooled, fish = {}, {}
         for sk in SESSION_KEYS:
             for n, cs in self.data["sessions"][sk]["catches"].items():
@@ -1828,8 +2242,7 @@ class FishingApp:
             items.append(("empty", L["no_results"]))
             return items
         for (n, w, p) in [r for r in ranked if r[2] <= 3]:
-            items.append(("row", f"{p}.", n, f"{self.fmt_weight(w)} g"))
-        parts = self.data.get("participants", {})
+            items.append(("row", f"{p}.", n, _club(n), f"{self.fmt_weight(w)} g"))
         for catkey in ["Lady", "U20", "U15", "U10"]:
             in_cat = {n: w for n, w in eligible.items()
                       if parts.get(n, {}).get("category") == catkey}
@@ -1838,7 +2251,7 @@ class FishingApp:
             cranked = self._competition_places(sorted(in_cat.items(), key=lambda x: (-x[1], x[0])))
             items.append(("section", L["category_options"].get(catkey, catkey)))
             for (n, w, p) in [r for r in cranked if r[2] == 1]:
-                items.append(("row", "", n, f"{self.fmt_weight(w)} g"))
+                items.append(("row", "", n, _club(n), f"{self.fmt_weight(w)} g"))
         return items
 
     def _clear_frame(self, frame):
@@ -1957,24 +2370,30 @@ class FishingApp:
         table.columnconfigure(0, weight=0)   # badge
         table.columnconfigure(1, weight=0)   # place
         table.columnconfigure(2, weight=1)   # name (stretch)
-        table.columnconfigure(3, weight=0)   # weight
+        table.columnconfigure(3, weight=1)   # club
+        table.columnconfigure(4, weight=0)   # category
+        table.columnconfigure(5, weight=0)   # weight
         r = 0
         ttk.Label(table, text=L["col_pos"], font=hf).grid(row=r, column=1, sticky="e", padx=4, pady=(0, 3))
         ttk.Label(table, text=L["col_name"], font=hf).grid(row=r, column=2, sticky="w", padx=4, pady=(0, 3))
-        ttk.Label(table, text=L["col_weight"], font=hf).grid(row=r, column=3, sticky="e", padx=4, pady=(0, 3))
+        ttk.Label(table, text=L["table_club"], font=hf).grid(row=r, column=3, sticky="w", padx=4, pady=(0, 3))
+        ttk.Label(table, text=L["table_category"], font=hf).grid(row=r, column=4, sticky="w", padx=4, pady=(0, 3))
+        ttk.Label(table, text=L["col_weight"], font=hf).grid(row=r, column=5, sticky="e", padx=4, pady=(0, 3))
         r += 1
         if not rows:
             ttk.Label(table, text=L["no_catches_round"], font=df, foreground="#999").grid(
-                row=r, column=0, columnspan=4, sticky="w", padx=4, pady=4)
+                row=r, column=0, columnspan=6, sticky="w", padx=4, pady=4)
             return
-        for (b, place, name, wtxt) in rows:
+        for (b, place, name, club, cat, wtxt) in rows:
             if not is_final and b:
                 bg, fg = self.BADGE_STYLES[b]
                 tk.Label(table, text=f" {b} ", background=bg, foreground=fg,
                          font=("Arial", max(8, fs - 3), "bold")).grid(row=r, column=0, padx=(0, 4), pady=1)
             ttk.Label(table, text=f"{place}.", font=rf).grid(row=r, column=1, sticky="e", padx=4)
             ttk.Label(table, text=name, font=rf).grid(row=r, column=2, sticky="w", padx=4)
-            ttk.Label(table, text=wtxt, font=rf, foreground=self.WEIGHT_FG).grid(row=r, column=3, sticky="e", padx=4)
+            ttk.Label(table, text=club, font=rf, foreground=self.WEIGHT_FG).grid(row=r, column=3, sticky="w", padx=4)
+            ttk.Label(table, text=cat, font=rf, foreground=self.WEIGHT_FG).grid(row=r, column=4, sticky="w", padx=4)
+            ttk.Label(table, text=wtxt, font=rf, foreground=self.WEIGHT_FG).grid(row=r, column=5, sticky="e", padx=4)
             r += 1
         if not is_final:
             c = 0
@@ -2000,30 +2419,33 @@ class FishingApp:
         rf = ("Arial", max(8, fs - 2))
         table.columnconfigure(0, weight=0)   # place
         table.columnconfigure(1, weight=1)   # name (stretch)
-        table.columnconfigure(2, weight=0)   # weight
+        table.columnconfigure(2, weight=1)   # club
+        table.columnconfigure(3, weight=0)   # weight
         r = 0
         header_added = False
         for it in items:
             if it[0] == "section":
                 ttk.Label(table, text=it[1], font=(headf if not header_added else subf)).grid(
-                    row=r, column=0, columnspan=3, sticky="w", padx=4,
+                    row=r, column=0, columnspan=4, sticky="w", padx=4,
                     pady=((6, 1) if header_added else (0, 1)))
                 r += 1
                 if not header_added:
                     ttk.Label(table, text=L["col_pos"], font=subf).grid(row=r, column=0, sticky="e", padx=4)
                     ttk.Label(table, text=L["col_name"], font=subf).grid(row=r, column=1, sticky="w", padx=4)
-                    ttk.Label(table, text=L["col_weight"], font=subf).grid(row=r, column=2, sticky="e", padx=4)
+                    ttk.Label(table, text=L["table_club"], font=subf).grid(row=r, column=2, sticky="w", padx=4)
+                    ttk.Label(table, text=L["col_weight"], font=subf).grid(row=r, column=3, sticky="e", padx=4)
                     r += 1
                     header_added = True
             elif it[0] == "empty":
                 ttk.Label(table, text=it[1], font=("Arial", max(8, fs - 3), "italic"),
-                          foreground="#999").grid(row=r, column=0, columnspan=3, sticky="w", padx=4, pady=4)
+                          foreground="#999").grid(row=r, column=0, columnspan=4, sticky="w", padx=4, pady=4)
                 r += 1
             else:
-                _, place, name, wtxt = it
+                _, place, name, club, wtxt = it
                 ttk.Label(table, text=place, font=rf).grid(row=r, column=0, sticky="e", padx=4)
                 ttk.Label(table, text=name, font=rf).grid(row=r, column=1, sticky="w", padx=4)
-                ttk.Label(table, text=wtxt, font=rf, foreground=self.WEIGHT_FG).grid(row=r, column=2, sticky="e", padx=4)
+                ttk.Label(table, text=club, font=rf, foreground=self.WEIGHT_FG).grid(row=r, column=2, sticky="w", padx=4)
+                ttk.Label(table, text=wtxt, font=rf, foreground=self.WEIGHT_FG).grid(row=r, column=3, sticky="e", padx=4)
                 r += 1
 
     def refresh_rankings(self):
@@ -3771,42 +4193,34 @@ class FishingApp:
 
         outer = ttk.Frame(dlg, padding=12)
         outer.pack(fill="both", expand=True)
-        # Stable button bar at the bottom (pack first to survive scroll).
+        # Stable button bar at the bottom.
         btn_bar = ttk.Frame(outer)
         btn_bar.pack(side="bottom", fill="x", pady=(8, 0))
 
-        canvas = tk.Canvas(outer, borderwidth=0, highlightthickness=0)
-        scroll = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
-        body = ttk.Frame(canvas)
-        body_id = canvas.create_window((0, 0), window=body, anchor="nw")
+        # Master-detail: a category list on the left raises one detail pane on
+        # the right. Order: Branding -> Events -> Reports -> Invoices (system
+        # settings would slot in first, ahead of Branding, when they exist).
+        main = ttk.Frame(outer)
+        main.pack(side="top", fill="both", expand=True)
+        main.columnconfigure(1, weight=1)
+        main.rowconfigure(0, weight=1)
+        nav = ttk.Treeview(main, show="tree", selectmode="browse", height=10)
+        nav.column("#0", width=160, stretch=False)
+        nav.grid(row=0, column=0, sticky="ns", padx=(0, 12))
+        detail = ttk.Frame(main)
+        detail.grid(row=0, column=1, sticky="nsew")
+        detail.rowconfigure(0, weight=1)
+        detail.columnconfigure(0, weight=1)
 
-        def _sync_scroll(_e=None):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-        body.bind("<Configure>", _sync_scroll)
-        # Make the inner frame track the canvas width (so rows fill it and the
-        # scrollregion height is computed correctly).
-        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(body_id, width=e.width))
-        canvas.configure(yscrollcommand=scroll.set)
-        scroll.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-        body.columnconfigure(1, weight=1)
+        groups = {}
 
-        # Mouse-wheel scrolling (Windows/macOS use <MouseWheel>; Linux uses
-        # Button-4/5). Bound only while the pointer is over this canvas.
-        def _on_wheel(e):
-            delta = -1 if (getattr(e, "delta", 0) > 0 or getattr(e, "num", 0) == 4) else 1
-            canvas.yview_scroll(delta, "units")
-        def _wheel_on(_e):
-            canvas.bind_all("<MouseWheel>", _on_wheel)
-            canvas.bind_all("<Button-4>", _on_wheel)
-            canvas.bind_all("<Button-5>", _on_wheel)
-        def _wheel_off(_e):
-            canvas.unbind_all("<MouseWheel>")
-            canvas.unbind_all("<Button-4>")
-            canvas.unbind_all("<Button-5>")
-        canvas.bind("<Enter>", _wheel_on)
-        canvas.bind("<Leave>", _wheel_off)
-        dlg.bind("<Destroy>", lambda e: _wheel_off(e) if e.widget is dlg else None, add="+")
+        def add_group(key, title):
+            o, inner = self._scroll_area(detail)
+            o.grid(row=0, column=0, sticky="nsew")
+            inner.columnconfigure(1, weight=1)
+            nav.insert("", "end", iid=key, text="  " + title)
+            groups[key] = o
+            return inner
 
         entries = {}
 
@@ -3822,57 +4236,9 @@ class FishingApp:
             e.insert(0, str(val))
             entries[key] = e
 
-        sec1 = ttk.LabelFrame(body, text=L["settings_invoice_section"], padding=8)
-        sec1.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
-        sec1.columnconfigure(1, weight=1)
-        for k, lk in [
-            ("invoice_prefix", "settings_field_invoice_prefix"),
-            ("issuer_name", "settings_field_issuer_name"),
-            ("issuer_legal_name", "settings_field_issuer_legal_name"),
-            ("issuer_house_number", "settings_field_house_number"),
-            ("issuer_street", "settings_field_street"),
-            ("issuer_postcode_country", "settings_field_postcode_country"),
-            ("issuer_postcode_digits", "settings_field_postcode_digits"),
-            ("issuer_city", "settings_field_city"),
-            ("issuer_country", "settings_field_country"),
-            ("issuer_phone", "settings_field_phone"),
-            ("issuer_email", "settings_field_email"),
-        ]:
-            add_row(sec1, k, L[lk])
-
-        # Invoice header/footer colour (same palette as the report highlight
-        # colours, plus "No colour" first). Applies on the next PDF generated.
-        _bc_row = sec1.grid_size()[1]
-        ttk.Label(sec1, text=L["settings_field_banner_colour"], font=("Arial", self.font_size)).grid(
-            row=_bc_row, column=0, sticky="w", pady=3, padx=(0, 8))
-        banner_labels = [(L["colour_none"], "none"), (L["col_green"], "green"),
-                         (L["col_yellow"], "yellow"), (L["col_blue"], "blue"),
-                         (L["col_grey"], "grey"), (L["col_red"], "red")]
-        banner_label_to_key = {lbl: key for lbl, key in banner_labels}
-        banner_key_to_label = {key: lbl for lbl, key in banner_labels}
-        banner_combo = ttk.Combobox(sec1, state="readonly", width=12,
-                                    values=[lbl for lbl, _ in banner_labels],
-                                    font=("Arial", self.font_size))
-        banner_combo.grid(row=_bc_row, column=1, sticky="w", pady=3)
-        banner_combo.set(banner_key_to_label.get(CONFIG.get("invoice_banner_colour", "blue"),
-                                                 banner_key_to_label["blue"]))
-
-        sec2 = ttk.LabelFrame(body, text=L["settings_bank_section"], padding=8)
-        sec2.grid(row=1, column=0, columnspan=2, sticky="ew")
-        sec2.columnconfigure(1, weight=1)
-        for k, lk in [
-            ("bank_account_holder", "settings_field_bank_account_holder"),
-            ("bank_name", "settings_field_bank_name"),
-            ("iban_groups", "settings_field_iban"),
-            ("payment_terms_days", "settings_field_payment_terms"),
-        ]:
-            add_row(sec2, k, L[lk])
-
-        # -- Branding & icons (Group E) --
-        sec3 = ttk.LabelFrame(body, text=L["settings_assets_section"], padding=8)
-        sec3.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
-        sec3.columnconfigure(1, weight=1)
-        ttk.Label(sec3, text=L["asset_note"].format(max=self._human_size(self.ASSET_MAX_BYTES)),
+        # ---- Branding ----
+        g_brand = add_group("branding", L["settings_group_branding"])
+        ttk.Label(g_brand, text=L["asset_note"].format(max=self._human_size(self.ASSET_MAX_BYTES)),
                   font=("Arial", self.font_size - 3), foreground="#555").grid(
                       row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
         status_labels = {}
@@ -3884,12 +4250,12 @@ class FishingApp:
                 foreground="#2e7d32" if present else "#999")
 
         def make_asset_row(r, which, label_key):
-            ttk.Label(sec3, text=L[label_key], font=("Arial", self.font_size)).grid(
+            ttk.Label(g_brand, text=L[label_key], font=("Arial", self.font_size)).grid(
                 row=r, column=0, sticky="w", pady=3, padx=(0, 8))
-            st = ttk.Label(sec3, font=("Arial", self.font_size - 2))
+            st = ttk.Label(g_brand, font=("Arial", self.font_size - 2))
             st.grid(row=r, column=1, sticky="w")
             status_labels[which] = st
-            bf = ttk.Frame(sec3)
+            bf = ttk.Frame(g_brand)
             bf.grid(row=r, column=2, sticky="e")
 
             def upload():
@@ -3918,57 +4284,47 @@ class FishingApp:
         make_asset_row(1, "logo", "asset_logo")
         make_asset_row(2, "watermark", "asset_watermark")
         make_asset_row(3, "icon", "asset_icon")
-        ttk.Label(sec3, text=L["settings_branding_restart_note"],
-                  font=("Arial", max(8, self.font_size - 3)), foreground="#888", wraplength=520, justify="left").grid(
-                      row=4, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        ttk.Label(g_brand, text=L["settings_branding_restart_note"],
+                  font=("Arial", max(8, self.font_size - 3)), foreground="#888",
+                  wraplength=420, justify="left").grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
-        # -- Competition / report defaults (app-wide) --
-        sec4 = ttk.LabelFrame(body, text=L["settings_general_section"], padding=8)
-        sec4.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
-        sec4.columnconfigure(1, weight=1)
-        ttk.Label(sec4, text=L["settings_field_max_rounds"], font=("Arial", self.font_size)).grid(
+        # ---- Events (competition ceilings + event default) ----
+        g_events = add_group("events", L["settings_group_events"])
+        ttk.Label(g_events, text=L["settings_field_max_rounds"], font=("Arial", self.font_size)).grid(
             row=0, column=0, sticky="w", pady=3, padx=(0, 8))
-        max_rounds_entry = ttk.Entry(sec4, font=("Arial", self.font_size), width=6,
-                                     validate="key",
+        max_rounds_entry = ttk.Entry(g_events, font=("Arial", self.font_size), width=6, validate="key",
                                      validatecommand=(self.root.register(self.validate_round_ceiling), "%P"))
         max_rounds_entry.grid(row=0, column=1, sticky="w")
         max_rounds_entry.insert(0, str(CONFIG.get("max_round_count", DEFAULT_MAX_ROUNDS)))
-
-        ttk.Label(sec4, text=L["settings_field_max_participants"], font=("Arial", self.font_size)).grid(
+        ttk.Label(g_events, text=L["settings_field_max_participants"], font=("Arial", self.font_size)).grid(
             row=1, column=0, sticky="w", pady=3, padx=(0, 8))
-        max_parts_entry = ttk.Entry(sec4, font=("Arial", self.font_size), width=6,
-                                    validate="key",
+        max_parts_entry = ttk.Entry(g_events, font=("Arial", self.font_size), width=6, validate="key",
                                     validatecommand=(self.root.register(self.validate_participants_ceiling), "%P"))
         max_parts_entry.grid(row=1, column=1, sticky="w")
         max_parts_entry.insert(0, str(CONFIG.get("max_participants_count", DEFAULT_MAX_PARTICIPANTS)))
-
-        # -- New-event defaults (seeded to current behaviour) --
-        sec5 = ttk.LabelFrame(body, text=L["settings_defaults_section"], padding=8)
-        sec5.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         def_track = tk.BooleanVar(value=bool(CONFIG.get("default_track_details", False)))
+        ttk.Checkbutton(g_events, text=L["settings_default_track"], variable=def_track).grid(
+            row=2, column=0, columnspan=2, sticky="w", pady=(8, 1))
+
+        # ---- Reports (new-event report defaults) ----
+        g_reports = add_group("reports", L["settings_group_reports"])
         def_highlight = tk.BooleanVar(value=bool(CONFIG.get("default_report_highlight", True)))
         def_individual = tk.BooleanVar(value=bool(CONFIG.get("default_individual_reports", False)))
         def_combined = tk.BooleanVar(value=bool(CONFIG.get("default_combined_ranking", False)))
-        ttk.Checkbutton(sec5, text=L["settings_default_track"], variable=def_track).pack(anchor="w", pady=1)
-        ttk.Checkbutton(sec5, text=L["settings_default_highlight"], variable=def_highlight).pack(anchor="w", pady=1)
-        # Individual/combined report toggles are read once at start-up, so a
-        # change here takes effect on the next launch (the others apply to the
-        # next new event). Flag that with a small remark.
         _restart = f'  ({L["settings_restart_note"]})'
-        indiv_row = ttk.Frame(sec5)
-        indiv_row.pack(anchor="w", pady=1, fill="x")
+        ttk.Checkbutton(g_reports, text=L["settings_default_highlight"], variable=def_highlight).grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=1)
+        indiv_row = ttk.Frame(g_reports)
+        indiv_row.grid(row=1, column=0, columnspan=2, sticky="w", pady=1)
         ttk.Checkbutton(indiv_row, text=L["settings_default_individual"], variable=def_individual).pack(side="left")
-        ttk.Label(indiv_row, text=_restart, font=("Arial", max(8, self.font_size - 2)),
-                  foreground="#888").pack(side="left")
-        comb_row = ttk.Frame(sec5)
-        comb_row.pack(anchor="w", pady=1, fill="x")
+        ttk.Label(indiv_row, text=_restart, font=("Arial", max(8, self.font_size - 2)), foreground="#888").pack(side="left")
+        comb_row = ttk.Frame(g_reports)
+        comb_row.grid(row=2, column=0, columnspan=2, sticky="w", pady=1)
         combined_default_chk = ttk.Checkbutton(comb_row, text=L["settings_default_combined"], variable=def_combined)
         combined_default_chk.pack(side="left")
-        ttk.Label(comb_row, text=_restart, font=("Arial", max(8, self.font_size - 2)),
-                  foreground="#888").pack(side="left")
+        ttk.Label(comb_row, text=_restart, font=("Arial", max(8, self.font_size - 2)), foreground="#888").pack(side="left")
 
         def _sync_combined_default(*_a):
-            # Combined ranking only applies when individual reports are on.
             if def_individual.get():
                 combined_default_chk.state(["!disabled"])
             else:
@@ -3976,6 +4332,55 @@ class FishingApp:
                 combined_default_chk.state(["disabled"])
         def_individual.trace_add("write", _sync_combined_default)
         _sync_combined_default()
+
+        # ---- Invoices (issuer + banner colour + bank) ----
+        g_inv = add_group("invoices", L["settings_group_invoices"])
+        for k, lk in [
+            ("invoice_prefix", "settings_field_invoice_prefix"),
+            ("issuer_name", "settings_field_issuer_name"),
+            ("issuer_legal_name", "settings_field_issuer_legal_name"),
+            ("issuer_house_number", "settings_field_house_number"),
+            ("issuer_street", "settings_field_street"),
+            ("issuer_postcode_country", "settings_field_postcode_country"),
+            ("issuer_postcode_digits", "settings_field_postcode_digits"),
+            ("issuer_city", "settings_field_city"),
+            ("issuer_country", "settings_field_country"),
+            ("issuer_phone", "settings_field_phone"),
+            ("issuer_email", "settings_field_email"),
+        ]:
+            add_row(g_inv, k, L[lk])
+        _bc_row = g_inv.grid_size()[1]
+        ttk.Label(g_inv, text=L["settings_field_banner_colour"], font=("Arial", self.font_size)).grid(
+            row=_bc_row, column=0, sticky="w", pady=3, padx=(0, 8))
+        banner_labels = [(L["colour_none"], "none"), (L["col_green"], "green"),
+                         (L["col_yellow"], "yellow"), (L["col_blue"], "blue"),
+                         (L["col_grey"], "grey"), (L["col_red"], "red")]
+        banner_label_to_key = {lbl: key for lbl, key in banner_labels}
+        banner_key_to_label = {key: lbl for lbl, key in banner_labels}
+        banner_combo = ttk.Combobox(g_inv, state="readonly", width=12,
+                                    values=[lbl for lbl, _ in banner_labels],
+                                    font=("Arial", self.font_size))
+        banner_combo.grid(row=_bc_row, column=1, sticky="w", pady=3)
+        banner_combo.set(banner_key_to_label.get(CONFIG.get("invoice_banner_colour", "blue"),
+                                                 banner_key_to_label["blue"]))
+        _bk_row = g_inv.grid_size()[1]
+        ttk.Label(g_inv, text=L["settings_bank_section"], font=("Arial", self.font_size, "bold")).grid(
+            row=_bk_row, column=0, columnspan=2, sticky="w", pady=(12, 2))
+        for k, lk in [
+            ("bank_account_holder", "settings_field_bank_account_holder"),
+            ("bank_name", "settings_field_bank_name"),
+            ("iban_groups", "settings_field_iban"),
+            ("payment_terms_days", "settings_field_payment_terms"),
+        ]:
+            add_row(g_inv, k, L[lk])
+
+        def show_group(key):
+            if key in groups:
+                groups[key].tkraise()
+        nav.bind("<<TreeviewSelect>>",
+                 lambda _e: show_group(nav.selection()[0]) if nav.selection() else None)
+        nav.selection_set("branding")
+        show_group("branding")
 
         def do_save():
             new_cfg = dict(CONFIG)
@@ -4037,10 +4442,7 @@ class FishingApp:
 
         ttk.Button(btn_bar, text=L["settings_save"], command=do_save).pack(side="left", padx=4)
         ttk.Button(btn_bar, text=L["close"], command=dlg.destroy).pack(side="right", padx=4)
-        # Ensure the scrollable region reflects the fully-built content so the
-        # last section (branding assets) is reachable on macOS.
         dlg.update_idletasks()
-        canvas.configure(scrollregion=canvas.bbox("all"))
         dlg.wait_window()
 
     # Light, print-friendly highlight tones - dark text stays readable on all.
@@ -4367,6 +4769,8 @@ class FishingApp:
                 canvas.restoreState()
 
             doc.build(story, onFirstPage=add_footer, onLaterPages=add_footer)
+            if getattr(self, "_reports_reload", None) is not None:
+                self._reports_reload()
             if messagebox.askyesno("", L["report_open_q"]):
                 self.open_file_external(filename)
         except Exception as e:
