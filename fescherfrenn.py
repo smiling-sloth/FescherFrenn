@@ -23,7 +23,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "4.1"
+APP_VERSION = "4.2"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -962,14 +962,14 @@ class FishingApp:
         live_lf.grid(row=0, column=1, sticky="nsew", padx=4)
         self.live_legend = ttk.Frame(live_lf)
         self.live_legend.pack(side="bottom", fill="x", pady=(6, 0))
-        self.live_table = ttk.Frame(live_lf)
-        self.live_table.pack(side="top", fill="both", expand=True)
+        _live_outer, self.live_table = self._scroll_area(live_lf)
+        _live_outer.pack(side="top", fill="both", expand=True)
 
         # -- right column: overall standings / category trophies (aligned table) --
         overall_lf = ttk.LabelFrame(cols, text=L["overall_rankings"], padding=5)
         overall_lf.grid(row=0, column=2, sticky="nsew", padx=(4, 0))
-        self.overall_table = ttk.Frame(overall_lf)
-        self.overall_table.pack(fill="both", expand=True)
+        _overall_outer, self.overall_table = self._scroll_area(overall_lf)
+        _overall_outer.pack(fill="both", expand=True)
 
         # The "in this round" list is intentionally dropped here: the live board
         # already shows who is fishing, and the space is better used.
@@ -1088,14 +1088,14 @@ class FishingApp:
         matrix_tv = ttk.Treeview(matrix_lf, columns=tuple(round_keys), show="tree headings",
                                  height=6, selectmode="none")
         matrix_tv.heading("#0", text=L["name"].rstrip(":"))
-        matrix_tv.column("#0", width=200, anchor="w")
+        # Fixed, readable widths (no stretch) so that with many rounds the table
+        # overflows horizontally and scrolls/swipes rather than squashing columns
+        # below a legible minimum.
+        matrix_tv.column("#0", width=200, minwidth=140, anchor="w", stretch=False)
         for rk in round_keys:
             matrix_tv.heading(rk, text=key_to_display(self.lang, rk))
-            matrix_tv.column(rk, width=90, anchor="center")
-        matrix_sb = ttk.Scrollbar(matrix_lf, orient="vertical", command=matrix_tv.yview)
-        matrix_tv.configure(yscrollcommand=matrix_sb.set)
-        matrix_sb.pack(side="right", fill="y")
-        matrix_tv.pack(side="top", fill="both", expand=True)
+            matrix_tv.column(rk, width=84, minwidth=64, anchor="center", stretch=False)
+        self._matrix_scroll_update = self._attach_treeview_scroll(matrix_tv, matrix_lf, horizontal=True)
 
         def need_selection(tv):
             sel = tv.selection()
@@ -1126,6 +1126,7 @@ class FishingApp:
             for name in sorted(self.data["participants"].keys(), key=str.lower):
                 vals = tuple("\u2713" if name in membership[rk] else "\u2014" for rk in round_keys)
                 matrix_tv.insert("", "end", iid=name, text=name, values=vals)
+            self._matrix_scroll_update()
 
         self._participants_refresh = refresh_all
 
@@ -1795,19 +1796,17 @@ class FishingApp:
 
     def live_board_data(self):
         """Structured rows for the live board: (badge|None, place, name, weight_str).
-        Returns (rows, is_final, extra_count)."""
+        Returns (rows, is_final). The full field is returned now — the panel
+        scrolls when it overflows rather than capping the list."""
         mk = self.current_manche
         ranked = self.round_weight_ranking(mk)
         is_final = (mk == "final")
         badges = {} if is_final else self._round_badges(mk)
-        xproc = self.data.get("config", {}).get("xproc", 10)
-        show_n = min(len(ranked), max(10, xproc + 5))
         rows = []
-        for (name, w, place) in ranked[:show_n]:
+        for (name, w, place) in ranked:
             b = None if is_final else badges.get(name, "D")
             rows.append((b, place, name, f"{self.fmt_weight(w)} g"))
-        extra = len(ranked) - show_n if len(ranked) > show_n else 0
-        return rows, is_final, extra
+        return rows, is_final
 
     def overall_podium_data(self):
         """Structured items for the overall panel: ('section', title),
@@ -1846,6 +1845,104 @@ class FishingApp:
         for w in frame.winfo_children():
             w.destroy()
 
+    def _scroll_area(self, parent):
+        """A vertically scrollable region. Returns (outer, inner): build content
+        into `inner`. The scrollbar appears only when content overflows; the
+        mouse wheel scrolls when hovering (finger-swipe maps to the same wheel
+        events on touch builds later)."""
+        outer = ttk.Frame(parent)
+        canvas = tk.Canvas(outer, highlightthickness=0, bd=0,
+                           background=self.root.cget("background"))
+        vbar = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        inner = ttk.Frame(canvas)
+        win = canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=vbar.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        outer.rowconfigure(0, weight=1)
+        outer.columnconfigure(0, weight=1)
+
+        def _update(_e=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfigure(win, width=canvas.winfo_width())
+            if inner.winfo_reqheight() > canvas.winfo_height():
+                vbar.grid(row=0, column=1, sticky="ns")
+            else:
+                vbar.grid_remove()
+                canvas.yview_moveto(0)
+        inner.bind("<Configure>", _update)
+        canvas.bind("<Configure>", _update)
+
+        def _wheel(e):
+            if inner.winfo_reqheight() <= canvas.winfo_height():
+                return
+            step = int(-e.delta / 120) if abs(e.delta) >= 120 else (-1 if e.delta > 0 else 1)
+            canvas.yview_scroll(step, "units")
+
+        def _wheel_x11(e):
+            if inner.winfo_reqheight() <= canvas.winfo_height():
+                return
+            canvas.yview_scroll(-1 if e.num == 4 else 1, "units")
+
+        def _enter(_):
+            canvas.bind_all("<MouseWheel>", _wheel)
+            canvas.bind_all("<Button-4>", _wheel_x11)
+            canvas.bind_all("<Button-5>", _wheel_x11)
+
+        def _leave(_):
+            canvas.unbind_all("<MouseWheel>")
+            canvas.unbind_all("<Button-4>")
+            canvas.unbind_all("<Button-5>")
+        outer.bind("<Enter>", _enter)
+        outer.bind("<Leave>", _leave)
+        return outer, inner
+
+    def _attach_treeview_scroll(self, tree, container, horizontal=False):
+        """Give a Treeview scrollbars that appear only on overflow, plus wheel
+        (vertical) and shift-wheel (horizontal) scrolling. Returns an updater to
+        call after (re)populating so the bars show/hide correctly."""
+        container.rowconfigure(0, weight=1)
+        container.columnconfigure(0, weight=1)
+        tree.grid(row=0, column=0, sticky="nsew")
+        vbar = ttk.Scrollbar(container, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vbar.set)
+        hbar = None
+        if horizontal:
+            hbar = ttk.Scrollbar(container, orient="horizontal", command=tree.xview)
+            tree.configure(xscrollcommand=hbar.set)
+
+        def _update(_e=None):
+            if tree.yview() != (0.0, 1.0):
+                vbar.grid(row=0, column=1, sticky="ns")
+            else:
+                vbar.grid_remove()
+            if hbar is not None:
+                if tree.xview() != (0.0, 1.0):
+                    hbar.grid(row=1, column=0, sticky="ew")
+                else:
+                    hbar.grid_remove()
+        tree.bind("<Configure>", _update)
+
+        def _wheel(e):
+            step = int(-e.delta / 120) if abs(e.delta) >= 120 else (-1 if e.delta > 0 else 1)
+            tree.yview_scroll(step, "units")
+
+        def _shift_wheel(e):
+            step = int(-e.delta / 120) if abs(e.delta) >= 120 else (-1 if e.delta > 0 else 1)
+            tree.xview_scroll(step, "units")
+
+        def _enter(_):
+            tree.bind_all("<MouseWheel>", _wheel)
+            if horizontal:
+                tree.bind_all("<Shift-MouseWheel>", _shift_wheel)
+
+        def _leave(_):
+            tree.unbind_all("<MouseWheel>")
+            if horizontal:
+                tree.unbind_all("<Shift-MouseWheel>")
+        tree.bind("<Enter>", _enter)
+        tree.bind("<Leave>", _leave)
+        return _update
+
     def _render_live_board(self, table, legend):
         """Render the live board as an aligned table with column headers, and
         the qualification legend pinned in its own bottom strip."""
@@ -1853,7 +1950,7 @@ class FishingApp:
         fs = self.font_size
         self._clear_frame(table)
         self._clear_frame(legend)
-        rows, is_final, extra = self.live_board_data()
+        rows, is_final = self.live_board_data()
         hf = ("Arial", max(9, fs - 2), "bold")
         rf = ("Arial", max(8, fs - 2))
         df = ("Arial", max(8, fs - 3), "italic")
@@ -1879,9 +1976,6 @@ class FishingApp:
             ttk.Label(table, text=name, font=rf).grid(row=r, column=2, sticky="w", padx=4)
             ttk.Label(table, text=wtxt, font=rf, foreground=self.WEIGHT_FG).grid(row=r, column=3, sticky="e", padx=4)
             r += 1
-        if extra:
-            ttk.Label(table, text=f"\u2026 +{extra}", font=df, foreground="#999").grid(
-                row=r, column=0, columnspan=4, sticky="w", padx=4)
         if not is_final:
             c = 0
             for letter in ("Q", "A", "?", "D"):
