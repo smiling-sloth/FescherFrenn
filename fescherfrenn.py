@@ -23,7 +23,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "4.5"
+APP_VERSION = "4.6"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -112,7 +112,7 @@ DEFAULT_CONFIG = {
     "default_combined_ranking": False,
     # App-level UI preferences (persist across launches via config.json).
     "theme_mode": "system",   # system | light | dark
-    "lang": "English",        # English | French | German | Luxembourgish
+    "lang": "English",        # English | French | German | Luxembourgish | Portuguese | Portuguese
 }
 
 
@@ -766,7 +766,7 @@ class FishingApp:
     def validate_number(self, input_str):
         if input_str == "":
             return True
-        if self.lang in ["French", "German", "Luxembourgish"]:
+        if self.lang in ["French", "German", "Luxembourgish", "Portuguese"]:
             input_str = input_str.replace(",", ".")
         if not re.match(r"^\d*\.?\d*$", input_str):
             return self._reject_input()
@@ -1832,7 +1832,8 @@ class FishingApp:
         lang_row.pack(anchor="w", fill="x", pady=(8, 0))
         ttk.Label(lang_row, text=f'{L["settings_lang_label"]}:', font=("Arial", self.font_size)).pack(side="left", padx=(0, 10))
         self._lang_display = {"English": "English", "French": "Français",
-                              "German": "Deutsch", "Luxembourgish": "Lëtzebuergesch"}
+                              "German": "Deutsch", "Luxembourgish": "Lëtzebuergesch",
+                              "Portuguese": "Português"}
         self._lang_label_to_key = {v: k for k, v in self._lang_display.items()}
         self._lang_combo = ttk.Combobox(lang_row, state="readonly", width=16,
                                         values=list(self._lang_display.values()),
@@ -2339,7 +2340,7 @@ class FishingApp:
     def fmt_weight(self, value):
         """Format a weight (in grams) as a whole number, localised for the UI language."""
         s = f"{value:,.0f}"
-        if self.lang in ["French", "German", "Luxembourgish"]:
+        if self.lang in ["French", "German", "Luxembourgish", "Portuguese"]:
             s = s.replace(",", "X").replace(".", ",").replace("X", ".")
         return s
 
@@ -2805,7 +2806,7 @@ class FishingApp:
         except (TypeError, ValueError):
             return str(value)
         s = str(int(fv)) if fv.is_integer() else repr(fv)
-        if self.lang in ["French", "German", "Luxembourgish"]:
+        if self.lang in ["French", "German", "Luxembourgish", "Portuguese"]:
             s = s.replace(".", ",")
         return s
 
@@ -3587,7 +3588,7 @@ class FishingApp:
             s = f"{int(round(v))}"
         else:
             s = f"{v:.2f}"
-        if self.lang in ["French", "German", "Luxembourgish"]:
+        if self.lang in ["French", "German", "Luxembourgish", "Portuguese"]:
             s = s.replace(".", ",")
         return s + "€"
 
