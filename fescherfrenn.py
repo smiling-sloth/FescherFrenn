@@ -23,7 +23,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "4.6"
+APP_VERSION = "4.7"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -691,19 +691,34 @@ class FishingApp:
             # one at a time. Populated in build_main_ui.
             self.pages = {}
             self.nav_buttons = {}
-            self.current_page = "event"
+            self.current_page = "participants"
 
+            # Branding logo for the header. Resolve robustly: a user-set logo
+            # (saved next to the app by Settings) or one shipped beside the
+            # script/bundle, regardless of the working directory at launch.
+            logo_path = None
+            for _cand in ("logo.png", _resource_path("logo.png")):
+                if _cand and os.path.exists(_cand):
+                    logo_path = _cand
+                    break
             try:
-                _raw_logo = tk.PhotoImage(file="logo.png")
+                if not logo_path:
+                    raise FileNotFoundError("logo.png")
+                _raw_logo = tk.PhotoImage(file=logo_path)
                 _factor = max(1, round(_raw_logo.height() / 100))
                 self.logo = _raw_logo.subsample(_factor) if _factor > 1 else _raw_logo
                 self.logo_label = ttk.Label(self.main_frame, image=self.logo)
                 self.logo_label.grid(row=0, column=0, pady=5, padx=5, sticky="nw")
-            except Exception:
+            except Exception as _e:
+                logging.warning(f"logo load failed: {_e}")
                 self.logo_label = ttk.Label(self.main_frame, text="Logo Placeholder (200x200px)", width=28, anchor="center")
                 self.logo_label.grid(row=0, column=0, pady=5, padx=5, sticky="nw")
 
             self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+            # Enter the paged app directly. Language is already known (config),
+            # so there is no separate welcome/language screen to pass through.
+            self.build_main_ui()
         except Exception as e:
             logging.error(f"Initialization failed: {str(e)}")
             messagebox.showerror("Error", f"Failed to start application: {str(e)}")
