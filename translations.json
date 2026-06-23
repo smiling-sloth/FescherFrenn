@@ -311,7 +311,17 @@
     "settings_group_branding": "Branding",
     "settings_group_events": "Events",
     "settings_group_reports": "Reports",
-    "settings_group_invoices": "Invoices"
+    "settings_group_invoices": "Invoices",
+    "reports_block_title": "Reports",
+    "header_no_event": "No active competition",
+    "settings_group_appearance": "Appearance",
+    "settings_theme_label": "Theme",
+    "theme_system": "System",
+    "theme_light": "Light",
+    "theme_dark": "Dark",
+    "settings_theme_note": "Switches the whole app between light and dark. \"System\" follows your OS setting.",
+    "settings_lang_label": "Language",
+    "header_manage_event": "Manage event"
   },
   "French": {
     "title": "Registre de Concours de Pêche Fëscherfrënn Stengefort",
@@ -625,7 +635,17 @@
     "settings_group_branding": "Image de marque",
     "settings_group_events": "Concours",
     "settings_group_reports": "Rapports",
-    "settings_group_invoices": "Factures"
+    "settings_group_invoices": "Factures",
+    "reports_block_title": "Rapports",
+    "header_no_event": "Aucun concours actif",
+    "settings_group_appearance": "Apparence",
+    "settings_theme_label": "Thème",
+    "theme_system": "Système",
+    "theme_light": "Clair",
+    "theme_dark": "Sombre",
+    "settings_theme_note": "Bascule toute l'application entre clair et sombre. « Système » suit votre OS.",
+    "settings_lang_label": "Langue",
+    "header_manage_event": "Gérer l'événement"
   },
   "German": {
     "title": "Fëscherfrënn Stengefort Angelwettbewerb Register",
@@ -939,7 +959,17 @@
     "settings_group_branding": "Branding",
     "settings_group_events": "Wettbewerb",
     "settings_group_reports": "Berichte",
-    "settings_group_invoices": "Rechnungen"
+    "settings_group_invoices": "Rechnungen",
+    "reports_block_title": "Berichte",
+    "header_no_event": "Kein aktiver Wettbewerb",
+    "settings_group_appearance": "Darstellung",
+    "settings_theme_label": "Design",
+    "theme_system": "System",
+    "theme_light": "Hell",
+    "theme_dark": "Dunkel",
+    "settings_theme_note": "Schaltet die App zwischen Hell und Dunkel um. „System“ folgt dem Betriebssystem.",
+    "settings_lang_label": "Sprache",
+    "header_manage_event": "Event verwalten"
   },
   "Luxembourgish": {
     "title": "Fëscherfrënn Stengefort Fëschkonkurrenz Register",
@@ -1253,6 +1283,16 @@
     "settings_group_branding": "Branding",
     "settings_group_events": "Concours",
     "settings_group_reports": "Rapporten",
-    "settings_group_invoices": "Rechnungen"
+    "settings_group_invoices": "Rechnungen",
+    "reports_block_title": "Rapporten",
+    "header_no_event": "Kee aktive Concours",
+    "settings_group_appearance": "Erscheinungsbild",
+    "settings_theme_label": "Theema",
+    "theme_system": "System",
+    "theme_light": "Hell",
+    "theme_dark": "Donkel",
+    "settings_theme_note": "Wiesselt d'ganz App tëscht hell an donkel. „System“ follegt dengem OS.",
+    "settings_lang_label": "Sprooch",
+    "header_manage_event": "Event geréieren"
   }
 }

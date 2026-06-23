@@ -23,7 +23,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "4.2"
+APP_VERSION = "4.5"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -110,6 +110,9 @@ DEFAULT_CONFIG = {
     "default_report_highlight_colour": "green",
     "default_individual_reports": False,
     "default_combined_ranking": False,
+    # App-level UI preferences (persist across launches via config.json).
+    "theme_mode": "system",   # system | light | dark
+    "lang": "English",        # English | French | German | Luxembourgish
 }
 
 
@@ -423,11 +426,204 @@ def display_to_key(lang, disp):
 
 
 class FishingApp:
+    # ---- Visual theme -----------------------------------------------------
+    # Flat palette: panels share the window background and are delimited by
+    # their border + label; tree/entry surfaces are slightly raised for
+    # contrast. Badge colours are saturated "pill" chips, readable on both.
+    THEMES = {
+        "light": {
+            "bg": "#f3f4f6", "surface": "#ffffff", "fg": "#1a1c1e", "fg_muted": "#5f6368",
+            "accent": "#1a73e8", "accent_fg": "#ffffff", "border": "#d3d7dd",
+            "tree_bg": "#ffffff", "tree_heading_bg": "#e8eaed", "sel_bg": "#1a73e8", "sel_fg": "#ffffff",
+            "weight_fg": "#5f6368",
+            "btn_bg": "#ffffff", "btn_light": "#ffffff", "btn_dark": "#c4c9d0", "btn_hover": "#eef3fd",
+            "nav_bg": "#e4e7eb", "nav_fg": "#1a1c1e", "nav_active_bg": "#1a73e8", "nav_active_fg": "#ffffff",
+            "badges": {"Q": ("#1e8e3e", "#ffffff"), "A": ("#1a73e8", "#ffffff"),
+                       "?": ("#f9ab00", "#1a1c1e"), "D": ("#d93025", "#ffffff")},
+        },
+        "dark": {
+            "bg": "#1e1f22", "surface": "#2b2d31", "fg": "#e3e5e8", "fg_muted": "#9aa0a6",
+            "accent": "#5b9bff", "accent_fg": "#0b1320", "border": "#3a3d42",
+            "tree_bg": "#26282c", "tree_heading_bg": "#34373c", "sel_bg": "#3b6fb6", "sel_fg": "#ffffff",
+            "weight_fg": "#9aa0a6",
+            "btn_bg": "#2b2d31", "btn_light": "#3a3d42", "btn_dark": "#161719", "btn_hover": "#33373d",
+            "nav_bg": "#26282c", "nav_fg": "#e3e5e8", "nav_active_bg": "#5b9bff", "nav_active_fg": "#0b1320",
+            "badges": {"Q": ("#2faa52", "#06210f"), "A": ("#5b9bff", "#06122b"),
+                       "?": ("#e0a106", "#241900"), "D": ("#e2574d", "#2a0908")},
+        },
+    }
+
+    def _detect_system_dark(self):
+        """Best-effort OS dark-mode probe (macOS / Windows). Falls back to light."""
+        import subprocess
+        try:
+            if sys.platform == "darwin":
+                r = subprocess.run(["defaults", "read", "-g", "AppleInterfaceStyle"],
+                                   capture_output=True, text=True, timeout=1)
+                return "dark" in (r.stdout or "").strip().lower()
+            if sys.platform.startswith("win"):
+                import winreg
+                key = winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER,
+                    r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+                val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+                return val == 0
+        except Exception as e:
+            logging.info(f"system theme detection unavailable: {e}")
+        return False
+
+    def _resolve_theme_mode(self):
+        mode = CONFIG.get("theme_mode", "system")
+        if mode in ("light", "dark"):
+            return mode
+        return "dark" if self._detect_system_dark() else "light"
+
+    def apply_theme(self):
+        """Resolve the active theme and push it into ttk styles + the root /
+        canvas backgrounds. Switches to the 'clam' base theme because the
+        native macOS/Windows ttk themes ignore most colour options (so dark
+        mode would otherwise be impossible)."""
+        t = self.THEMES[self._resolve_theme_mode()]
+        self.theme = t
+        self.WEIGHT_FG = t["weight_fg"]
+        fs = self.font_size
+        try:
+            style = ttk.Style()
+            try:
+                style.theme_use("clam")
+            except Exception:
+                pass
+            style.configure(".", background=t["bg"], foreground=t["fg"],
+                            fieldbackground=t["surface"], bordercolor=t["border"],
+                            lightcolor=t["bg"], darkcolor=t["bg"], troughcolor=t["bg"])
+            style.configure("TFrame", background=t["bg"])
+            style.configure("TLabel", background=t["bg"], foreground=t["fg"])
+            style.configure("TLabelframe", background=t["bg"], bordercolor=t["border"])
+            style.configure("TLabelframe.Label", background=t["bg"], foreground=t["accent"],
+                            font=("Arial", max(9, fs - 2), "bold"))
+            style.configure("TButton", background=t["btn_bg"], foreground=t["fg"],
+                            bordercolor=t["border"], lightcolor=t["btn_light"], darkcolor=t["btn_dark"],
+                            relief="raised", borderwidth=2, padding=(14, 9),
+                            font=("Arial", max(9, fs - 3)))
+            style.map("TButton",
+                      background=[("pressed", t["accent"]), ("active", t["btn_hover"])],
+                      foreground=[("pressed", t["accent_fg"])],
+                      relief=[("pressed", "sunken")])
+            style.configure("Accent.TButton", background=t["accent"], foreground=t["accent_fg"],
+                            lightcolor=t["accent"], darkcolor=t["accent"], relief="raised",
+                            borderwidth=2, padding=(16, 10), font=("Arial", max(9, fs - 2), "bold"))
+            style.map("Accent.TButton",
+                      background=[("pressed", t["accent"]), ("active", t["accent"])],
+                      foreground=[("pressed", t["accent_fg"]), ("active", t["accent_fg"])],
+                      relief=[("pressed", "sunken")])
+            style.configure("TCheckbutton", background=t["bg"], foreground=t["fg"])
+            style.map("TCheckbutton", background=[("active", t["bg"])],
+                      foreground=[("disabled", t["fg_muted"])])
+            style.configure("TRadiobutton", background=t["bg"], foreground=t["fg"])
+            style.map("TRadiobutton", background=[("active", t["bg"])])
+            style.configure("TEntry", fieldbackground=t["surface"], foreground=t["fg"],
+                            bordercolor=t["border"], insertcolor=t["fg"], padding=(6, 5))
+            style.map("TEntry", fieldbackground=[("disabled", t["bg"])],
+                      foreground=[("disabled", t["fg_muted"])])
+            style.configure("TCombobox", fieldbackground=t["surface"], background=t["surface"],
+                            foreground=t["fg"], bordercolor=t["border"], arrowcolor=t["fg"], padding=(6, 5))
+            style.map("TCombobox", fieldbackground=[("readonly", t["surface"])],
+                      foreground=[("readonly", t["fg"]), ("disabled", t["fg_muted"])])
+            style.configure("Treeview", background=t["tree_bg"], fieldbackground=t["tree_bg"],
+                            foreground=t["fg"], rowheight=int(fs * 2.15),
+                            font=("Arial", max(9, fs - 4)), bordercolor=t["border"])
+            style.configure("Treeview.Heading", background=t["tree_heading_bg"], foreground=t["fg"],
+                            font=("Arial", max(9, fs - 4), "bold"), relief="flat")
+            style.map("Treeview", background=[("selected", t["sel_bg"])],
+                      foreground=[("selected", t["sel_fg"])])
+            style.map("Treeview.Heading", background=[("active", t["tree_heading_bg"])])
+            style.configure("Vertical.TScrollbar", background=t["surface"], troughcolor=t["bg"],
+                            bordercolor=t["border"], arrowcolor=t["fg"])
+            style.configure("Horizontal.TScrollbar", background=t["surface"], troughcolor=t["bg"],
+                            bordercolor=t["border"], arrowcolor=t["fg"])
+            # Header strip text styles.
+            style.configure("HeaderTitle.TLabel", background=t["bg"], foreground=t["accent"],
+                            font=("Arial", fs + 2, "bold"))
+            style.configure("HeaderSub.TLabel", background=t["bg"], foreground=t["fg_muted"],
+                            font=("Arial", max(9, fs - 3)))
+            style.configure("PageName.TLabel", background=t["bg"], foreground=t["fg"],
+                            font=("Arial", fs, "bold"))
+            style.configure("HeaderLink.TLabel", background=t["bg"], foreground=t["accent"],
+                            font=("Arial", max(9, fs - 3), "bold"))
+        except Exception as e:
+            logging.warning(f"apply_theme failed: {e}")
+        try:
+            self.root.configure(bg=t["bg"])
+            self.canvas.configure(bg=t["bg"], highlightthickness=0)
+            self.nav_bar.configure(style="TFrame")
+        except Exception:
+            pass
+
+    def _on_theme_change(self, mode):
+        """Persist the chosen theme mode and repaint the whole UI."""
+        new_cfg = dict(CONFIG)
+        new_cfg["theme_mode"] = mode
+        try:
+            save_config(new_cfg)
+        except Exception as e:
+            logging.warning(f"saving theme_mode failed: {e}")
+        CONFIG.clear()
+        CONFIG.update(new_cfg)
+        self.apply_theme()
+        self.build_main_ui()   # rebuild so tk widgets (nav, badges) repaint
+
+    def _badge_colours(self, letter):
+        return self.theme["badges"].get(letter, self.theme["badges"]["D"])
+
+    def _make_pill(self, parent, text, bg, fg, fs):
+        """A small rounded 'pill' badge drawn on a Canvas (true rounded
+        corners, unlike a flat Label chip). Background matches the parent so
+        the rounded edges blend into the theme."""
+        pad_x, pad_y = 8, 3
+        h = fs + 2 * pad_y + 2
+        w = max(h, int(len(str(text)) * fs * 0.72) + 2 * pad_x)
+        try:
+            parent_bg = parent.cget("background")
+        except Exception:
+            parent_bg = self.theme["bg"]
+        c = tk.Canvas(parent, width=w, height=h, highlightthickness=0, bd=0,
+                      background=parent_bg)
+        r = h / 2.0
+        # Stadium / rounded-rect via a smoothed polygon.
+        pts = [r, 0, w - r, 0, w, 0, w, r, w, h - r, w, h,
+               w - r, h, r, h, 0, h, 0, h - r, 0, r, 0, 0]
+        c.create_polygon(pts, smooth=True, fill=bg, outline=bg)
+        c.create_text(w / 2.0, h / 2.0 + 1, text=str(text), fill=fg,
+                      font=("Arial", fs, "bold"))
+        return c
+
+    def _event_subtitle(self):
+        """One-line 'name · place · date' for the header, or a muted hint."""
+        ev = self.data.get("event", {}) if hasattr(self, "data") else {}
+        parts = [p for p in (str(ev.get("name", "")).strip(),
+                             str(ev.get("location", "")).strip(),
+                             str(ev.get("date", "")).strip()) if p]
+        return " \u00b7 ".join(parts) if parts else LANGUAGES[self.lang].get("header_no_event", "")
+
+    def _page_display_name(self, name):
+        L = LANGUAGES[self.lang]
+        return {"event": L["nav_event"], "participants": L["nav_participants"],
+                "catch": L["nav_catch"], "rankings": L["nav_rankings"],
+                "settings": L["nav_settings"]}.get(name, "")
+
     def __init__(self, root):
         self.root = root
         try:
             self.data = load_data()
-            self.lang = self.data.get("lang", "English")
+            # Language is an app-level preference stored in config.json so it
+            # always reopens as set. Migrate a previously-used event-file
+            # language once (when config still holds the default).
+            self.lang = CONFIG.get("lang", "English")
+            if self.lang == "English" and self.data.get("lang") in LANGUAGES:
+                self.lang = self.data["lang"]
+            if self.lang not in LANGUAGES:
+                self.lang = "English"
+            CONFIG["lang"] = self.lang
             self.data["lang"] = self.lang
             self.root.title(LANGUAGES[self.lang]["title"])
             try:
@@ -442,15 +638,10 @@ class FishingApp:
 
             # Tracks the manche currently shown in the main UI.
             self.current_manche = "manche1"
-            # ttk styling for Treeviews used in the manager / catch editor.
-            try:
-                _style = ttk.Style()
-                _style.configure("Treeview", font=("Arial", max(9, self.font_size - 4)),
-                                 rowheight=int(self.font_size * 1.9))
-                _style.configure("Treeview.Heading",
-                                 font=("Arial", max(9, self.font_size - 4), "bold"))
-            except Exception as _e:
-                logging.warning(f"Treeview styling failed: {_e}")
+            # Visual theme (light / dark / system) is applied once the canvas
+            # exists, just below; ttk styles are global so a single apply()
+            # covers every widget built afterwards.
+            self.theme = self.THEMES["light"]
 
             self.rankings = None
             self.manche_participants_list = None
@@ -493,6 +684,9 @@ class FishingApp:
             self.main_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
             self.root.bind("<Configure>", self.on_resize)
 
+            # Apply the visual theme now that the root, canvas and nav bar exist.
+            self.apply_theme()
+
             # Paged UI: page frames live in a container; the bottom nav raises
             # one at a time. Populated in build_main_ui.
             self.pages = {}
@@ -509,14 +703,6 @@ class FishingApp:
                 self.logo_label = ttk.Label(self.main_frame, text="Logo Placeholder (200x200px)", width=28, anchor="center")
                 self.logo_label.grid(row=0, column=0, pady=5, padx=5, sticky="nw")
 
-            self.lang_frame = ttk.Frame(self.main_frame)
-            self.lang_frame.grid(row=1, column=0, columnspan=2, pady=5, sticky="ew")
-            ttk.Label(self.lang_frame, text=LANGUAGES[self.lang]["select_lang"], font=("Arial", self.font_size)).pack()
-            ttk.Button(self.lang_frame, text="English", command=lambda: self.set_language("English")).pack(side=tk.LEFT, padx=5)
-            ttk.Button(self.lang_frame, text="Français", command=lambda: self.set_language("French")).pack(side=tk.LEFT, padx=5)
-            ttk.Button(self.lang_frame, text="Deutsch", command=lambda: self.set_language("German")).pack(side=tk.LEFT, padx=5)
-            ttk.Button(self.lang_frame, text="Lëtzebuergesch", command=lambda: self.set_language("Luxembourgish")).pack(side=tk.LEFT, padx=5)
-
             self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         except Exception as e:
             logging.error(f"Initialization failed: {str(e)}")
@@ -527,13 +713,20 @@ class FishingApp:
         self.canvas.itemconfig(self.canvas_frame, width=self.canvas.winfo_width())
 
     def set_language(self, lang):
+        if lang not in LANGUAGES:
+            return
         self.lang = lang
         self.data["lang"] = lang
         self.root.title(LANGUAGES[self.lang]["title"])
+        # Persist app-level language so it always reopens as set.
+        new_cfg = dict(CONFIG)
+        new_cfg["lang"] = lang
         try:
-            self.lang_frame.grid_forget()
-        except Exception:
-            pass
+            save_config(new_cfg)
+        except Exception as e:
+            logging.warning(f"saving language failed: {e}")
+        CONFIG.clear()
+        CONFIG.update(new_cfg)
         self.build_main_ui()
 
     def _reject_input(self):
@@ -701,15 +894,35 @@ class FishingApp:
                 widget.destroy()
 
         self.main_frame.columnconfigure(0, weight=0)   # logo
-        self.main_frame.columnconfigure(1, weight=1)   # header-right cluster
-        self.main_frame.rowconfigure(0, weight=0)   # header (logo + help/close)
+        self.main_frame.columnconfigure(1, weight=1)   # header context (app/event/page)
+        self.main_frame.columnconfigure(2, weight=0)   # help/close cluster
+        self.main_frame.rowconfigure(0, weight=0)   # header
         self.main_frame.rowconfigure(1, weight=1)   # page container
         self.main_frame.rowconfigure(2, weight=0)   # footer
         self.logo_label.grid(row=0, column=0, pady=5, padx=5, sticky="nw")
 
+        # Persistent context strip next to the logo: app name, the active
+        # competition (name · place · date), and the current page so you always
+        # know where you are in the bottom-nav.
+        header_center = ttk.Frame(self.main_frame)
+        header_center.grid(row=0, column=1, sticky="w", padx=10, pady=6)
+        ttk.Label(header_center, text=L["title"], style="HeaderTitle.TLabel").pack(anchor="w")
+        ev_row = ttk.Frame(header_center)
+        ev_row.pack(anchor="w", fill="x")
+        self.header_event_label = ttk.Label(ev_row, text=self._event_subtitle(),
+                                            style="HeaderSub.TLabel", cursor="hand2")
+        self.header_event_label.pack(side="left")
+        self.header_manage_hint = ttk.Label(ev_row, text="  \u270e " + L["header_manage_event"],
+                                            style="HeaderLink.TLabel", cursor="hand2")
+        self.header_manage_hint.pack(side="left")
+        for _w in (self.header_event_label, self.header_manage_hint):
+            _w.bind("<Button-1>", lambda e: self.open_event_manager())
+        self.header_page_label = ttk.Label(header_center, text="", style="PageName.TLabel")
+        self.header_page_label.pack(anchor="w", pady=(2, 0))
+
         # Persistent top-right controls (same place on every page).
         header_right = ttk.Frame(self.main_frame)
-        header_right.grid(row=0, column=1, sticky="ne", padx=6, pady=6)
+        header_right.grid(row=0, column=2, sticky="ne", padx=6, pady=6)
         self.help_btn = ttk.Button(header_right, text=L["help"], command=self.show_help, width=8)
         self.help_btn.pack(side=tk.LEFT, padx=3)
         self.close_btn = ttk.Button(header_right, text=L["close"], command=self.on_closing, width=8)
@@ -717,7 +930,7 @@ class FishingApp:
 
         # -- page container: all pages share one cell; nav raises one --------
         self.page_container = ttk.Frame(self.main_frame)
-        self.page_container.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=3, pady=3)
+        self.page_container.grid(row=1, column=0, columnspan=3, sticky="nsew", padx=3, pady=3)
         self.page_container.rowconfigure(0, weight=1)
         self.page_container.columnconfigure(0, weight=1)
         self.pages = {}
@@ -739,7 +952,7 @@ class FishingApp:
 
         # -- footer: version bottom-left, copyright centred ------------------
         footer_frame = ttk.Frame(self.main_frame)
-        footer_frame.grid(row=2, column=0, columnspan=2, pady=5, sticky="ew")
+        footer_frame.grid(row=2, column=0, columnspan=3, pady=5, sticky="ew")
         footer_frame.columnconfigure(0, weight=1)
         footer_frame.columnconfigure(1, weight=0)
         footer_frame.columnconfigure(2, weight=1)
@@ -784,10 +997,14 @@ class FishingApp:
                  ("catch", L["nav_catch"]), ("rankings", L["nav_rankings"]),
                  ("settings", L["nav_settings"])]
         self.nav_buttons = {}
+        t = self.theme
         for i, (name, label) in enumerate(items):
             self.nav_bar.columnconfigure(i, weight=1)
-            b = tk.Button(self.nav_bar, text=label, font=("Arial", self.font_size - 1),
-                          relief="raised", padx=6, pady=8,
+            b = tk.Button(self.nav_bar, text=label, font=("Arial", self.font_size, "bold"),
+                          relief="flat", bd=0, padx=8, pady=15,
+                          bg=t["nav_bg"], fg=t["nav_fg"],
+                          activebackground=t["nav_active_bg"], activeforeground=t["nav_active_fg"],
+                          highlightthickness=0, cursor="hand2",
                           command=lambda n=name: self.show_page(n))
             b.grid(row=0, column=i, sticky="ew", padx=2)
             self.nav_buttons[name] = b
@@ -798,12 +1015,20 @@ class FishingApp:
             name = "event"
         self.current_page = name
         self.pages[name].tkraise()
+        if getattr(self, "header_page_label", None) is not None:
+            try:
+                self.header_page_label.config(text=self._page_display_name(name))
+            except tk.TclError:
+                pass
+        t = self.theme
         for n, b in self.nav_buttons.items():
             try:
                 if n == name:
-                    b.config(relief="sunken", font=("Arial", self.font_size - 1, "bold"))
+                    b.config(bg=t["nav_active_bg"], fg=t["nav_active_fg"],
+                             font=("Arial", self.font_size, "bold"))
                 else:
-                    b.config(relief="raised", font=("Arial", self.font_size - 1))
+                    b.config(bg=t["nav_bg"], fg=t["nav_fg"],
+                             font=("Arial", self.font_size))
             except tk.TclError:
                 pass
         try:
@@ -813,6 +1038,12 @@ class FishingApp:
 
     # ---- page: Event -------------------------------------------------------
     def _build_page_event(self, page):
+        # Thin wrapper: the Event tab hosts the same workspace that the
+        # tappable-header Event Manager dialog reuses (prototype). Keeping it a
+        # single builder means both entry points stay perfectly in sync.
+        self._build_event_workspace(page)
+
+    def _build_event_workspace(self, page):
         L = LANGUAGES[self.lang]
         page.rowconfigure(1, weight=1)
         page.columnconfigure(0, weight=1)
@@ -997,6 +1228,41 @@ class FishingApp:
         ttk.Button(ev_btns, text=L["events_browse"], command=browse).pack(side="left", padx=3)
         ttk.Button(ev_btns, text=L["events_delete"], command=delete_selected).pack(side="right", padx=3)
         reload_list()
+
+    def open_event_manager(self):
+        """Prototype: open the full Event workspace (details + saved-events
+        list) as a dialog, reached by tapping the event line in the header.
+        The Event tab still exists, so this is purely an additional shortcut.
+        On close we rebuild the main UI so the shared event-detail widgets are
+        re-bound to the tab and the header reflects any change."""
+        if self._raise_open_panel():
+            return
+        L = LANGUAGES[self.lang]
+        win = Toplevel(self.root)
+        win.title(L["nav_event"])
+        win.transient(self.root)
+        win.update_idletasks()   # macOS: map before grabbing
+        win.grab_set()
+        self._center(win, 900, 660)
+        self._register_panel(win)
+
+        container = ttk.Frame(win, padding=8)
+        container.pack(fill="both", expand=True)
+        # Build the same workspace here; this rebinds self.event_name etc. to
+        # these dialog widgets for as long as the dialog is open.
+        self._build_event_workspace(container)
+
+        btnbar = ttk.Frame(win, padding=(8, 0, 8, 8))
+        btnbar.pack(fill="x")
+
+        def _close():
+            try:
+                win.destroy()
+            finally:
+                # Restore the tab's widgets + header (and re-bind shared attrs).
+                self.build_main_ui()
+        ttk.Button(btnbar, text=L["close"], command=_close).pack(side="right")
+        win.protocol("WM_DELETE_WINDOW", _close)
 
     # ---- page: Log Catch & Rankings (operating screen) -------------------
     def _build_page_catch(self, page):
@@ -1354,12 +1620,13 @@ class FishingApp:
     # ---- page: Rankings ----------------------------------------------------
     def _build_page_rankings(self, page):
         L = LANGUAGES[self.lang]
-        page.columnconfigure(0, weight=1)
-        page.rowconfigure(1, weight=1)   # reports list stretches
-        page.rowconfigure(2, weight=1)   # invoices list stretches
+        page.columnconfigure(0, weight=1, uniform="ri")   # Reports panel
+        page.columnconfigure(1, weight=1, uniform="ri")   # Invoices panel
+        page.rowconfigure(1, weight=1)                    # the two panels stretch
 
+        # --- report options strip (full width, above the two panels) ---
         settings_frame = ttk.LabelFrame(page, text=L["report_settings_label"], padding=5)
-        settings_frame.grid(row=0, column=0, sticky="ew", padx=4, pady=3)
+        settings_frame.grid(row=0, column=0, columnspan=2, sticky="ew", padx=4, pady=3)
         ttk.Label(settings_frame, text=f'\u2713 {L["chk_event_summary"]}',
                   font=("Arial", self.font_size - 2, "italic"), foreground="gray").pack(anchor="w", pady=2)
         ttk.Checkbutton(settings_frame, text=L["chk_individual"],
@@ -1392,21 +1659,19 @@ class FishingApp:
         self.highlight_colour_combo.bind("<<ComboboxSelected>>", _on_colour_pick)
         self.highlight_colour_combo.pack(side="left", padx=6)
         self._update_highlight_state()
-        self.report_btn = ttk.Button(settings_frame, text=L["generate_report"], command=self.generate_report)
-        self.report_btn.pack(anchor="w", pady=(6, 2))
 
-        # -- Generated reports block (like the Events list) --
-        rep_lf = ttk.LabelFrame(page, text=L["reports_panel_title"], padding=6)
-        rep_lf.grid(row=1, column=0, sticky="nsew", padx=4, pady=3)
+        # --- Reports panel (left) ---
+        rep_lf = ttk.LabelFrame(page, text=L["reports_block_title"], padding=6)
+        rep_lf.grid(row=1, column=0, sticky="nsew", padx=(4, 2), pady=3)
         rep_btns = ttk.Frame(rep_lf)
         rep_btns.pack(side="bottom", fill="x", pady=(6, 0))
         rep_holder = ttk.Frame(rep_lf)
         rep_holder.pack(side="top", fill="both", expand=True)
-        rep_tv = ttk.Treeview(rep_holder, columns=("round", "file"), show="headings", height=6)
+        rep_tv = ttk.Treeview(rep_holder, columns=("round", "file"), show="headings", height=8)
         rep_tv.heading("round", text=L["reports_col_round"])
         rep_tv.heading("file", text=L["reports_col_file"])
-        rep_tv.column("round", width=160, anchor="w", stretch=False)
-        rep_tv.column("file", width=360, anchor="w")
+        rep_tv.column("round", width=120, anchor="w", stretch=False)
+        rep_tv.column("file", width=220, anchor="w")
         rep_update = self._attach_treeview_scroll(rep_tv, rep_holder, horizontal=True)
         rep_state = {"files": []}
 
@@ -1431,19 +1696,22 @@ class FishingApp:
                 return
             self.open_file_external(rep_state["files"][idx][1])
         rep_tv.bind("<Double-1>", open_report)
+        # Generate sits ahead of Open in the Reports panel.
+        self.report_btn = ttk.Button(rep_btns, text=L["generate_report"], command=self.generate_report, style="Accent.TButton")
+        self.report_btn.pack(side="left", padx=3)
         ttk.Button(rep_btns, text=L["reports_open"], command=open_report).pack(side="left", padx=3)
 
-        # -- Invoices block (list of generated invoices; manage opens the editor) --
-        inv_lf = ttk.LabelFrame(page, text=L["manage_invoices"], padding=6)
-        inv_lf.grid(row=2, column=0, sticky="nsew", padx=4, pady=3)
+        # --- Invoices panel (right) ---
+        inv_lf = ttk.LabelFrame(page, text=L["invoices_btn"], padding=6)
+        inv_lf.grid(row=1, column=1, sticky="nsew", padx=(2, 4), pady=3)
         inv_btns = ttk.Frame(inv_lf)
         inv_btns.pack(side="bottom", fill="x", pady=(6, 0))
         inv_holder = ttk.Frame(inv_lf)
         inv_holder.pack(side="top", fill="both", expand=True)
         icols = ("number", "date", "client", "amount")
-        inv_tv = ttk.Treeview(inv_holder, columns=icols, show="headings", height=6)
+        inv_tv = ttk.Treeview(inv_holder, columns=icols, show="headings", height=8)
         for c, h, w in zip(icols, [L["inv_number"], L["inv_date"], L["inv_col_client"], L["inv_col_amount"]],
-                           [160, 110, 320, 100]):
+                           [130, 90, 200, 90]):
             inv_tv.heading(c, text=h)
             inv_tv.column(c, width=w, anchor="w" if c in ("number", "client") else "center",
                           stretch=(c == "client"))
@@ -1462,7 +1730,22 @@ class FishingApp:
             inv_update()
         self._invoices_reload = reload_invoices
 
-        def open_invoice_pdf(_evt=None):
+        def _inv_selected_index():
+            sel = inv_tv.selection()
+            if not sel:
+                messagebox.showinfo(L["invoices_btn"], L["select_row"])
+                return None
+            try:
+                return int(sel[0])
+            except ValueError:
+                return None   # the "no invoices" placeholder row
+
+        def inv_new():
+            if not self.check_event_details():
+                return
+            self.open_invoice_form(on_done=reload_invoices)
+
+        def inv_open(_evt=None):
             sel = inv_tv.selection()
             if not sel:
                 return
@@ -1470,15 +1753,44 @@ class FishingApp:
                 inv = self.data.get("invoices", [])[int(sel[0])]
             except (ValueError, IndexError):
                 return
-            self.open_file_external(self._invoice_pdf_path(inv))
+            path = self._invoice_pdf_path(inv)
+            try:
+                if not os.path.exists(path):
+                    self.write_invoice_pdf(inv)   # regenerate if missing (e.g. imported event)
+                self.open_file_external(path)
+            except Exception as e:
+                logging.error(f"Open invoice failed: {e}")
+                messagebox.showerror("Error", str(e))
 
-        def manage_invoices():
-            self.open_invoices_manager()   # modal; refresh the list when it returns
-            reload_invoices()
-        inv_tv.bind("<Double-1>", open_invoice_pdf)
-        ttk.Button(inv_btns, text=L["reports_open"], command=open_invoice_pdf).pack(side="left", padx=3)
-        self.invoices_btn = ttk.Button(inv_btns, text=L["invoices_btn"], command=manage_invoices)
+        def inv_edit():
+            idx = _inv_selected_index()
+            if idx is None:
+                return
+            self.open_invoice_form(edit_index=idx, on_done=reload_invoices)
+
+        def inv_delete():
+            idx = _inv_selected_index()
+            if idx is None:
+                return
+            if self.custom_dialog(L["invoices_btn"], L["confirm_delete_invoice"],
+                                  [(L["yes"], True), (L["no"], False)]):
+                inv = self.data["invoices"].pop(idx)
+                try:
+                    pdf_path = self._invoice_pdf_path(inv)
+                    if os.path.exists(pdf_path):
+                        os.remove(pdf_path)
+                except Exception as e:
+                    logging.warning(f"Could not delete invoice PDF: {e}")
+                self.update_event()
+                reload_invoices()
+
+        inv_tv.bind("<Double-1>", inv_open)
+        # Order: New, Open, Edit, Delete
+        self.invoices_btn = ttk.Button(inv_btns, text=L["new_invoice"], command=inv_new, style="Accent.TButton")
         self.invoices_btn.pack(side="left", padx=3)
+        ttk.Button(inv_btns, text=L["reports_open"], command=inv_open).pack(side="left", padx=3)
+        ttk.Button(inv_btns, text=L["edit"], command=inv_edit).pack(side="left", padx=3)
+        ttk.Button(inv_btns, text=L["delete"], command=inv_delete).pack(side="left", padx=3)
 
         reload_reports()
         reload_invoices()
@@ -1488,6 +1800,11 @@ class FishingApp:
         L = LANGUAGES[self.lang]
         self._st_entries = {}
         self._st_banner_map = {}
+        # Settings groups are laid out as side-by-side "islands": the small
+        # groups share a 2-column grid at the top, the long Invoices group
+        # spans full width below, then the Save bar.
+        page.columnconfigure(0, weight=1, uniform="set")
+        page.columnconfigure(1, weight=1, uniform="set")
 
         def add_row(parent, key, label, width=32):
             r = parent.grid_size()[1]
@@ -1501,9 +1818,36 @@ class FishingApp:
             e.insert(0, str(val))
             self._st_entries[key] = e
 
+        # ---- Appearance (theme + language) ----
+        g_appear = ttk.LabelFrame(page, text=L["settings_group_appearance"], padding=8)
+        g_appear.grid(row=0, column=0, sticky="new", padx=4, pady=4)
+        row = ttk.Frame(g_appear)
+        row.pack(anchor="w", fill="x")
+        ttk.Label(row, text=f'{L["settings_theme_label"]}:', font=("Arial", self.font_size)).pack(side="left", padx=(0, 10))
+        self._theme_mode_var = tk.StringVar(value=CONFIG.get("theme_mode", "system"))
+        for mode, key in (("system", "theme_system"), ("light", "theme_light"), ("dark", "theme_dark")):
+            ttk.Radiobutton(row, text=L[key], value=mode, variable=self._theme_mode_var,
+                            command=lambda m=mode: self._on_theme_change(m)).pack(side="left", padx=4)
+        lang_row = ttk.Frame(g_appear)
+        lang_row.pack(anchor="w", fill="x", pady=(8, 0))
+        ttk.Label(lang_row, text=f'{L["settings_lang_label"]}:', font=("Arial", self.font_size)).pack(side="left", padx=(0, 10))
+        self._lang_display = {"English": "English", "French": "Français",
+                              "German": "Deutsch", "Luxembourgish": "Lëtzebuergesch"}
+        self._lang_label_to_key = {v: k for k, v in self._lang_display.items()}
+        self._lang_combo = ttk.Combobox(lang_row, state="readonly", width=16,
+                                        values=list(self._lang_display.values()),
+                                        font=("Arial", self.font_size))
+        self._lang_combo.set(self._lang_display.get(self.lang, "English"))
+        self._lang_combo.bind("<<ComboboxSelected>>",
+                              lambda e: self.set_language(self._lang_label_to_key.get(self._lang_combo.get(), "English")))
+        self._lang_combo.pack(side="left")
+        ttk.Label(g_appear, text=L["settings_theme_note"],
+                  font=("Arial", max(8, self.font_size - 3)), foreground=self.theme["fg_muted"],
+                  wraplength=300, justify="left").pack(anchor="w", pady=(6, 0))
+
         # ---- Branding ----
         g_brand = ttk.LabelFrame(page, text=L["settings_group_branding"], padding=8)
-        g_brand.pack(fill="x", padx=4, pady=(4, 6))
+        g_brand.grid(row=1, column=1, sticky="new", padx=4, pady=4)
         g_brand.columnconfigure(1, weight=1)
         ttk.Label(g_brand, text=L["asset_note"].format(max=self._human_size(self.ASSET_MAX_BYTES)),
                   font=("Arial", self.font_size - 3), foreground="#555").grid(
@@ -1550,11 +1894,11 @@ class FishingApp:
         make_asset_row(3, "icon", "asset_icon")
         ttk.Label(g_brand, text=L["settings_branding_restart_note"],
                   font=("Arial", max(8, self.font_size - 3)), foreground="#888",
-                  wraplength=520, justify="left").grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
+                  wraplength=300, justify="left").grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
         # ---- Events ----
         g_events = ttk.LabelFrame(page, text=L["settings_group_events"], padding=8)
-        g_events.pack(fill="x", padx=4, pady=6)
+        g_events.grid(row=0, column=1, sticky="new", padx=4, pady=4)
         g_events.columnconfigure(1, weight=1)
         ttk.Label(g_events, text=L["settings_field_max_rounds"], font=("Arial", self.font_size)).grid(
             row=0, column=0, sticky="w", pady=3, padx=(0, 8))
@@ -1574,7 +1918,7 @@ class FishingApp:
 
         # ---- Reports ----
         g_reports = ttk.LabelFrame(page, text=L["settings_group_reports"], padding=8)
-        g_reports.pack(fill="x", padx=4, pady=6)
+        g_reports.grid(row=1, column=0, sticky="new", padx=4, pady=4)
         self._st_def_highlight = tk.BooleanVar(value=bool(CONFIG.get("default_report_highlight", True)))
         self._st_def_individual = tk.BooleanVar(value=bool(CONFIG.get("default_individual_reports", False)))
         self._st_def_combined = tk.BooleanVar(value=bool(CONFIG.get("default_combined_ranking", False)))
@@ -1602,7 +1946,7 @@ class FishingApp:
 
         # ---- Invoices ----
         g_inv = ttk.LabelFrame(page, text=L["settings_group_invoices"], padding=8)
-        g_inv.pack(fill="x", padx=4, pady=6)
+        g_inv.grid(row=2, column=0, columnspan=2, sticky="new", padx=4, pady=4)
         g_inv.columnconfigure(1, weight=1)
         for k, lk in [
             ("invoice_prefix", "settings_field_invoice_prefix"),
@@ -1644,8 +1988,8 @@ class FishingApp:
             add_row(g_inv, k, L[lk])
 
         save_bar = ttk.Frame(page)
-        save_bar.pack(fill="x", padx=4, pady=(2, 6))
-        self.settings_btn = ttk.Button(save_bar, text=L["settings_save"], command=self._settings_do_save)
+        save_bar.grid(row=3, column=0, columnspan=2, sticky="w", padx=4, pady=(2, 8))
+        self.settings_btn = ttk.Button(save_bar, text=L["settings_save"], command=self._settings_do_save, style="Accent.TButton")
         self.settings_btn.pack(side="left")
 
     def _settings_do_save(self):
@@ -2198,9 +2542,6 @@ class FishingApp:
 
     # Single muted colour for weight values, used in BOTH panels so they match.
     WEIGHT_FG = "#9aa0a6"
-    BADGE_STYLES = {"Q": ("#bfe0a0", "#173404"), "A": ("#aecdf2", "#0C447C"),
-                    "?": ("#f3cd86", "#854F0B"), "D": ("#eda9a9", "#791F1F")}
-
     def live_board_data(self):
         """Structured rows for the live board:
         (badge|None, place, name, club, category_display, weight_str), is_final.
@@ -2386,9 +2727,9 @@ class FishingApp:
             return
         for (b, place, name, club, cat, wtxt) in rows:
             if not is_final and b:
-                bg, fg = self.BADGE_STYLES[b]
-                tk.Label(table, text=f" {b} ", background=bg, foreground=fg,
-                         font=("Arial", max(8, fs - 3), "bold")).grid(row=r, column=0, padx=(0, 4), pady=1)
+                bg, fg = self._badge_colours(b)
+                self._make_pill(table, b, bg, fg, max(8, fs - 3)).grid(
+                    row=r, column=0, padx=(0, 5), pady=2)
             ttk.Label(table, text=f"{place}.", font=rf).grid(row=r, column=1, sticky="e", padx=4)
             ttk.Label(table, text=name, font=rf).grid(row=r, column=2, sticky="w", padx=4)
             ttk.Label(table, text=club, font=rf, foreground=self.WEIGHT_FG).grid(row=r, column=3, sticky="w", padx=4)
@@ -2398,10 +2739,10 @@ class FishingApp:
         if not is_final:
             c = 0
             for letter in ("Q", "A", "?", "D"):
-                bg, fg = self.BADGE_STYLES[letter]
+                bg, fg = self._badge_colours(letter)
                 txt = {"Q": L["legend_q"], "A": L["legend_a"], "?": L["legend_tie"], "D": L["legend_d"]}[letter]
-                tk.Label(legend, text=f" {letter} ", background=bg, foreground=fg,
-                         font=("Arial", max(7, fs - 4), "bold")).grid(row=0, column=c, padx=(6, 2), pady=2)
+                self._make_pill(legend, letter, bg, fg, max(7, fs - 4)).grid(
+                    row=0, column=c, padx=(6, 2), pady=2)
                 c += 1
                 ttk.Label(legend, text=txt.split(" ", 1)[-1] if " " in txt else txt,
                           font=("Arial", max(7, fs - 4))).grid(row=0, column=c, padx=(0, 2))
@@ -3235,146 +3576,6 @@ class FishingApp:
         L = LANGUAGES[self.lang]
         return s in (L["inv_individuals_group"], L["inv_others_group"],
                      L["inv_separator"], L["inv_already_invoiced_group"])
-
-    def open_invoices_manager(self):
-        if self._raise_open_panel():
-            return
-        if not self.check_event_details():
-            return
-        self.update_event()
-        L = LANGUAGES[self.lang]
-
-        win = Toplevel(self.root)
-        win.title(L["manage_invoices"])
-        win.transient(self.root)
-        win.update_idletasks()  # macOS: ensure window is mapped before grabbing
-        win.grab_set()
-        self._center(win, 840, 440)
-        self._register_panel(win)
-
-        outer = ttk.Frame(win, padding=10)
-        outer.pack(fill="both", expand=True)
-        # Pack the button bar FIRST so it survives the expanding tree.
-        btns = ttk.Frame(outer)
-        btns.pack(side="bottom", fill="x", pady=(8, 0))
-
-        cols = ("number", "date", "client", "amount")
-        headers = [L["inv_number"], L["inv_date"], L["inv_col_client"], L["inv_col_amount"]]
-        widths = [160, 110, 340, 100]
-        tv = ttk.Treeview(outer, columns=cols, show="headings", height=14)
-        for c, h, w in zip(cols, headers, widths):
-            tv.heading(c, text=h)
-            tv.column(c, width=w, anchor="w" if c in ("number", "client") else "center")
-        sb = ttk.Scrollbar(outer, orient="vertical", command=tv.yview)
-        tv.configure(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        tv.pack(side="top", fill="both", expand=True)
-
-        def refresh():
-            tv.delete(*tv.get_children())
-            invs = self.data.get("invoices", [])
-            if not invs:
-                tv.insert("", "end", values=("", "", L["no_invoices"], ""))
-                return
-            for idx, inv in enumerate(invs):
-                tv.insert("", "end", iid=str(idx), values=(
-                    inv.get("number", ""),
-                    inv.get("date", ""),
-                    inv.get("recipient_name", ""),
-                    self.fmt_money(inv.get("amount", 0))))
-
-        def selected_index():
-            sel = tv.selection()
-            if not sel:
-                messagebox.showinfo(L["manage_invoices"], L["select_row"])
-                return None
-            try:
-                return int(sel[0])
-            except ValueError:
-                return None
-
-        def open_selected_pdf(_evt=None):
-            sel = tv.selection()
-            if not sel:
-                return
-            try:
-                idx = int(sel[0])
-            except ValueError:
-                return  # placeholder "no invoices" row
-            inv = self.data["invoices"][idx]
-            path = self._invoice_pdf_path(inv)
-            if os.path.exists(path):
-                self.open_file_external(path)
-            else:
-                messagebox.showinfo(L["manage_invoices"], L["inv_pdf_missing"])
-
-        tv.bind("<Double-1>", open_selected_pdf)
-
-        def do_new():
-            # On macOS, two stacked grabs (manager + form) breaks click routing
-            # if the form has no grab of its own. Release the manager's grab
-            # while the form is open, then reclaim it on return so the manager
-            # stays modal once the form closes.
-            win.grab_release()
-            try:
-                self.open_invoice_form(on_done=refresh)
-            finally:
-                if win.winfo_exists():
-                    win.grab_set()
-
-        def do_edit():
-            idx = selected_index()
-            if idx is None:
-                return
-            win.grab_release()
-            try:
-                self.open_invoice_form(edit_index=idx, on_done=refresh)
-            finally:
-                if win.winfo_exists():
-                    win.grab_set()
-
-        def do_reprint():
-            # "Open": opens the invoice PDF immediately, no prompts (same as
-            # double-clicking the row). If the file is missing on disk (e.g.
-            # the event was imported on another machine), it is regenerated
-            # from the saved invoice data first, then opened.
-            idx = selected_index()
-            if idx is None:
-                return
-            inv = self.data["invoices"][idx]
-            path = self._invoice_pdf_path(inv)
-            try:
-                if not os.path.exists(path):
-                    self.write_invoice_pdf(inv)
-                self.open_file_external(path)
-            except Exception as e:
-                logging.error(f"Open invoice failed: {e}")
-                messagebox.showerror("Error", str(e))
-
-        def do_delete():
-            idx = selected_index()
-            if idx is None:
-                return
-            if self.custom_dialog(L["manage_invoices"], L["confirm_delete_invoice"],
-                                  [(L["yes"], True), (L["no"], False)]):
-                inv = self.data["invoices"].pop(idx)
-                # Best-effort: remove the on-disk PDF; the number stays burned.
-                try:
-                    pdf_path = self._invoice_pdf_path(inv)
-                    if os.path.exists(pdf_path):
-                        os.remove(pdf_path)
-                except Exception as e:
-                    logging.warning(f"Could not delete invoice PDF: {e}")
-                self.update_event()
-                refresh()
-
-        ttk.Button(btns, text=L["new_invoice"], command=do_new).pack(side="left", padx=3)
-        ttk.Button(btns, text=L["edit"], command=do_edit).pack(side="left", padx=3)
-        ttk.Button(btns, text=L["reprint_invoice"], command=do_reprint).pack(side="left", padx=3)
-        ttk.Button(btns, text=L["delete"], command=do_delete).pack(side="left", padx=3)
-        ttk.Button(btns, text=L["close"], command=win.destroy).pack(side="right", padx=3)
-        refresh()
-        win.wait_window()
 
     def fmt_money(self, value):
         """Localised price: '30' if integer, otherwise '30,50' (FR/DE/LB) or '30.50' (EN)."""
@@ -4798,58 +4999,6 @@ class FishingApp:
             if os.path.exists(fn):
                 out.append((key_to_display(self.lang, sk), fn))
         return out
-
-    def open_reports_panel(self):
-        if self._raise_open_panel():
-            return
-        L = LANGUAGES[self.lang]
-        reports = self._event_report_files()
-
-        win = Toplevel(self.root)
-        win.title(L["reports_panel_title"])
-        win.transient(self.root)
-        win.update_idletasks()
-        win.grab_set()
-        self._center(win, 560, 380)
-        self._register_panel(win)
-
-        outer = ttk.Frame(win, padding=10)
-        outer.pack(fill="both", expand=True)
-        btns = ttk.Frame(outer)
-        btns.pack(side="bottom", fill="x", pady=(8, 0))
-
-        cols = ("round", "file")
-        tv = ttk.Treeview(outer, columns=cols, show="headings", height=12)
-        tv.heading("round", text=L["reports_col_round"])
-        tv.heading("file", text=L["reports_col_file"])
-        tv.column("round", width=160, anchor="w")
-        tv.column("file", width=360, anchor="w")
-        sb = ttk.Scrollbar(outer, orient="vertical", command=tv.yview)
-        tv.configure(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        tv.pack(side="top", fill="both", expand=True)
-
-        if reports:
-            for idx, (label, path) in enumerate(reports):
-                tv.insert("", "end", iid=str(idx),
-                          values=(label, os.path.basename(path)))
-        else:
-            tv.insert("", "end", values=("", L["reports_no_files"]))
-
-        def open_selected(_evt=None):
-            sel = tv.selection()
-            if not sel:
-                return
-            try:
-                idx = int(sel[0])
-            except ValueError:
-                return
-            self.open_file_external(reports[idx][1])
-
-        tv.bind("<Double-1>", open_selected)
-        ttk.Button(btns, text=L["reports_open"], command=open_selected).pack(side="left", padx=3)
-        ttk.Button(btns, text=L["cancel"], command=win.destroy).pack(side="right", padx=3)
-        win.bind("<Return>", open_selected)
 
     def custom_dialog(self, title, message, buttons):
         dialog = Toplevel(self.root)
