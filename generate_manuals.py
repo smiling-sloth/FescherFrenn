@@ -45,9 +45,12 @@ def generate_manual_pdf(language, output_filename):
         story.append(Paragraph(LANGUAGES[language]["title"], title_style))
         story.append(Spacer(1, 24))
 
+        # Intro paragraph (single block, no duplicated heading)
+        story.append(Paragraph(LANGUAGES[language]["intro"], normal_style))
+        story.append(Spacer(1, 24))
+
         # Sections
         sections = [
-            ("intro", "intro"),
             ("start", "start_text"),
             ("event", "event_text"),
             ("participants", "participants_text"),

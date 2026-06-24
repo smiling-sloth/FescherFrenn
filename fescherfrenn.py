@@ -23,7 +23,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "4.8g"
+APP_VERSION = "4.9b"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -642,7 +642,7 @@ class FishingApp:
         macOS, where iconbitmap('.ico') does nothing) from a PNG; iconbitmap
         additionally drives the Windows taskbar icon. Falls back silently."""
         png = None
-        for cand in ("logo.png", _resource_path("logo.png")):
+        for cand in (self._asset_path("logo.png"), _resource_path("logo.png")):
             if cand and os.path.exists(cand):
                 png = cand
                 break
@@ -653,7 +653,7 @@ class FishingApp:
             except Exception as e:
                 logging.info(f"iconphoto failed: {e}")
         ico = None
-        for cand in ("logo.ico", _resource_path("logo.ico")):
+        for cand in (self._asset_path("logo.ico"), _resource_path("logo.ico")):
             if cand and os.path.exists(cand):
                 ico = cand
                 break
@@ -773,7 +773,7 @@ class FishingApp:
             # (saved next to the app by Settings) or one shipped beside the
             # script/bundle, regardless of the working directory at launch.
             logo_path = None
-            for _cand in ("logo.png", _resource_path("logo.png")):
+            for _cand in (self._asset_path("logo.png"), _resource_path("logo.png")):
                 if _cand and os.path.exists(_cand):
                     logo_path = _cand
                     break
@@ -1032,7 +1032,9 @@ class FishingApp:
         self.page_container.rowconfigure(0, weight=1)
         self.page_container.columnconfigure(0, weight=1)
         self.pages = {}
-        for name in ("event", "catch", "participants", "rankings", "settings"):
+        # The Event page is gone: event configuration now lives only in the
+        # header "Manage event" dialog (which reuses _build_event_workspace).
+        for name in ("catch", "participants", "rankings", "settings"):
             f = ttk.Frame(self.page_container)
             f.grid(row=0, column=0, sticky="nsew")
             self.pages[name] = f
@@ -1042,7 +1044,6 @@ class FishingApp:
         self._round_selectors = []
         self._participants_refresh = None
 
-        self._build_page_event(self.pages["event"])
         self._build_page_catch(self.pages["catch"])
         self._build_page_participants(self.pages["participants"])
         self._build_page_rankings(self.pages["rankings"])
@@ -1164,13 +1165,6 @@ class FishingApp:
             self.canvas.yview_moveto(0)
         except Exception:
             pass
-
-    # ---- page: Event -------------------------------------------------------
-    def _build_page_event(self, page):
-        # Thin wrapper: the Event tab hosts the same workspace that the
-        # tappable-header Event Manager dialog reuses (prototype). Keeping it a
-        # single builder means both entry points stay perfectly in sync.
-        self._build_event_workspace(page)
 
     def _build_event_workspace(self, page):
         L = LANGUAGES[self.lang]
@@ -2260,6 +2254,8 @@ class FishingApp:
         This version creates the tooltip on hover, places it *below* the widget so
         it never covers the click target, and destroys it on leave or on any click.
         """
+        if widget is None:
+            return   # widget not built in this context (e.g. dialog-only button)
         if not text:
             return
         state = {"win": None, "after": None}
@@ -4246,7 +4242,7 @@ class FishingApp:
             header) and return the y of the first line-item row."""
             page_state["n"] += 1
             # --- watermark (behind everything) ---
-            wm = "watermark.png"
+            wm = self._asset_path("watermark.png")
             if os.path.exists(wm):
                 try:
                     c.saveState()
@@ -4482,16 +4478,22 @@ class FishingApp:
         "icon":      ("logo.ico", (256, 256), "ico"),
     }
 
+    def _asset_path(self, name):
+        """Absolute path to a branding asset inside the app folder, independent
+        of the current working directory (so assets persist across versions and
+        don't rely on the startup chdir)."""
+        return os.path.join(app_base_dir(), name)
+
     def _asset_present(self, which):
-        path = self.ASSET_SPECS[which][0]
-        return os.path.exists(path)
+        return os.path.exists(self._asset_path(self.ASSET_SPECS[which][0]))
 
     def _import_asset(self, which, src_path):
         """Validate + normalise + save a branding image to its canonical file.
         Returns True on success; shows a clear message and returns False on any
         problem (bad type, too large, unreadable)."""
         L = LANGUAGES[self.lang]
-        canonical, fit_box, kind = self.ASSET_SPECS[which]
+        name, fit_box, kind = self.ASSET_SPECS[which]
+        canonical = self._asset_path(name)
         ext = os.path.splitext(src_path)[1].lower()
         if ext not in (".png", ".jpg", ".jpeg"):
             messagebox.showerror("Error", L["asset_bad_type"])
@@ -4530,7 +4532,7 @@ class FishingApp:
         return True
 
     def _remove_asset(self, which):
-        canonical = self.ASSET_SPECS[which][0]
+        canonical = self._asset_path(self.ASSET_SPECS[which][0])
         try:
             if os.path.exists(canonical):
                 os.remove(canonical)
@@ -4868,7 +4870,7 @@ class FishingApp:
             story = []
 
             sess_label = key_to_display(self.lang, sk)
-            logo_path = "logo.png"
+            logo_path = self._asset_path("logo.png")
             if os.path.exists(logo_path):
                 # Fit the logo inside a 1-inch box, preserving aspect ratio so
                 # rectangular logos are not distorted into a square.

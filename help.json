@@ -2,169 +2,211 @@
   "English": [
     {
       "title": "1. Getting started",
-      "body": "The application is designed for a single fishing event made up of three rounds (Manche 1 / Manche 2 / Manche 3) followed by a Final. You will:\n  1. Set up the event details (name, location, date).\n  2. Decide whether to record length and fish type for each catch.\n  3. Load the participant roster.\n  4. Assign participants to each round.\n  5. Log catches as they happen.\n  6. Generate result PDFs and, when appropriate, invoices.\n\nSwitch language at startup (English / Francais / Deutsch / Letzebuergesch). Your choice is remembered."
+      "body": "Fëscherfrënn Stengefort runs a club fishing competition from start to finish. The app opens on four tabs along the bottom — Participants, Log Catch & Rankings, Reports & Invoices, and Settings & Tools — plus an Event Manager you reach from the “Manage event” link at the top.\n\nTypical workflow:\n  1. Open or create an event (Manage event).\n  2. Add participants and assign them to each round.\n  3. Log catches round by round.\n  4. Check the live rankings and qualifiers.\n  5. Generate result PDFs and, when needed, invoices.\n\nLanguage and theme are set in Settings & Tools and remembered between sessions."
     },
     {
       "title": "2. The event",
-      "body": "Fill in Event Name, Location and Date (Mandatory). Optionally tick \"Record fish length & type\" if catches will be logged with those details.\nThe first time you click \"Manage Participants\", these event details lock - this protects against accidental edits during the competition. The length/type setting also locks at that moment.\nOld events from earlier versions of the app reopen automatically (their data is upgraded to the v3.0 schema on load)."
+      "body": "Click “Manage event” at the top to open the Event Manager. There you set the event name, location and date, the number of rounds, how many participants take part per round, and how many qualify.\n\nThe Manager also lists every event saved in the app folder: select one and choose Open to reopen it, or Browse… to pick an event file from elsewhere. Close returns you to the main screen."
     },
     {
       "title": "3. Roster & rounds",
-      "body": "Click \"Manage Participants\" to open the manager window. Two panes side by side:\n  - Left: Competition Roster (everyone ever entered).\n  - Right: participants assigned to the round currently selected on the main screen.\nAdd/Edit/Remove acts on the roster. The middle \"Add to round\" and \"Remove from round\" buttons transfer between the two sides. A name already in the right pane disappears from the left pane (one assignment per round); switching the round drop-down resets the view.\n\nEach participant carries: name, optional club, optional category (Senior, Master, Veteran, Lady, U20, U15, U10), optional remark.\nA participant with a blank Club is treated as an \"Individual\" - this matters at invoicing time."
+      "body": "On the Participants tab you build the roster: add each angler with name, club and category (Senior, Master, Veteran, Lady, U20, U15, U10), then assign participants to each round.\n\nThe Round selector at the top chooses which round you are working on. It stays in step with the same selector on the Log Catch and Reports pages, so changing it in one place changes it everywhere."
     },
     {
       "title": "4. Logging catches",
-      "body": "On the main screen, with a round selected:\n  - Pick the participant from the drop-down (the list shows only people assigned to that round).\n  - Enter weight in grams.\n  - \"Number of catches\" lets you record several fish in one row (e.g. 3 small bream weighed together at 800 g). When length/type tracking is enabled, this is locked to 1 because length and type belong to a single fish.\n  - When tracking is enabled, also enter length (cm) and fish type. Otherwise these inputs are disabled.\n  - Click \"Log Catch\".\n\nTo correct a catch later, click \"Edit Catches\". Pick a row, then Edit to change weight/count/length/type, or Delete to remove it. Participant name and time stay locked."
+      "body": "On the Log Catch & Rankings tab, pick the round with the Round selector and record each angler's catch. Weights are entered in grams. You can edit or delete an entry if you make a mistake.\n\nAs you enter weights, the rankings on the same page update automatically."
     },
     {
       "title": "5. Live rankings",
-      "body": "The right side of the main screen shows two panels:\n  - Live rankings for the currently selected round (left).\n  - Overall rankings pooled across all rounds (right).\nBoth follow the order: Total Weight, Most Catches, Longest Fish, Heaviest Fish.\nWhen length/type tracking is off, the Longest/Heaviest sections are greyed out and excluded from ranking."
+      "body": "Rankings are ordered by total weight (in grams) for the selected round. Ties are resolved consistently, and anglers who already qualified in an earlier round are carried forward. If a tie falls exactly on the last qualifying place, the app asks you to decide who goes through."
     },
     {
       "title": "6. Reports",
-      "body": "Below the rankings, the Report Settings panel controls what the PDF contains:\n  - Event Summary - always included for the currently selected round.\n  - Individual Reports - optional, one page per participant in that round.\n  - Combined Ranking - All Rounds - optional, and only available when \"Final\" is selected.\n\nClick \"Generate Report\" to produce a PDF. Each round writes to its own file:\n  YYYYMMDD_EventName_manche1.pdf\n  ..._manche2.pdf, ..._manche3.pdf, ..._final.pdf\nSo per-round reports issued during the competition are preserved alongside the Final wrap-up.\nReports are landscape when length/type tracking is on, portrait when off."
+      "body": "On the Reports & Invoices tab, use the Round selector in the report options to choose which round the report covers, then generate the PDF. You can produce per-round results or a combined event summary. Reports are saved as PDF files you can print or share."
     },
     {
       "title": "7. Invoicing",
-      "body": "Click \"Invoices\" to open the Invoice Manager. The list shows every invoice issued for the current event.\n  - New Invoice: opens the invoice form.\n  - Edit: modify a saved invoice (number stays the same).\n  - Reprint: regenerate the PDF from saved data.\n  - Delete: removes the invoice; the number is NOT recycled (sequence integrity).\n\nIn the invoice form:\n  - On the very first invoice for an event, you also set the starting sequence number (e.g. 12). From then on it auto-increments and is read-only.\n  - Choose Club or Individual. For Club, the drop-down lists distinct clubs of assigned participants. For Individual, it lists true individuals first (blank Club field), then a separator, then all other assigned participants - this is a safety net if someone was filed under a club but should be billed individually.\n  - Quantity is suggested automatically (sum of all assignments for that recipient) and stays editable.\n  - Description is mandatory and pre-filled from the event name and date.\n  - Unit price is in EUR, up to two decimals.\n  - Save & Generate writes both the invoice record and the PDF to:\n      {event_folder}/invoices/PREFIX-NN-YYYY.pdf\nInvoice numbers live within the event only and do not carry over."
+      "body": "Also on the Reports & Invoices tab you can generate participant invoices as branded PDFs. The issuer details, bank information, payment terms and banner colour come from Settings & Tools, so set those once and every invoice uses them. Invoices do not depend on the selected round."
     },
     {
       "title": "8. Settings",
-      "body": "\"Settings\" opens the application configuration: invoice prefix, issuer name and address, phone, email, bank, IBAN, payment terms. These values appear in every generated invoice. They live in config.json next to the app and persist across all events.\n\nThe Account number (IBAN) field accepts six groups of four characters: bank code (4 letters), then the IBAN. Spaces are accepted on input and removed on save."
+      "body": "Settings & Tools holds the app-level options:\n  • Appearance — Language, then Theme (Light / Dark / System).\n  • Branding — import your logo, watermark and window icon (choose a PNG; the icon file is generated for you).\n  • Invoices — issuer details, bank, payment terms and banner colour.\n  • Reports — report options and the round to report on.\n\nUse the Save button to keep your changes for next time."
     },
     {
       "title": "9. Files and backups",
-      "body": "Each event lives in its own folder named YYYYMMDD_EventName, containing:\n  - the event JSON file (data),\n  - the per-round report PDFs,\n  - an invoices/ subfolder with invoice PDFs.\n\nEvery save also writes a timestamped backup to ~/FescherfrennData/backups.\nErrors are written to fescherfrenn.log in the application folder.\n\nExport Event saves the current event as a portable JSON file you can share or archive. Import Event loads such a file back."
+      "body": "Keep the program in one folder together with translations.json, help.json and config.json. Your branding images (logo.png, watermark.png, logo.ico) live there too, and each event is stored in its own sub-folder.\n\nBecause the app works from its own folder, your settings, branding and events stay in place when you update to a new version — just replace the program file. Automatic backups are kept under your home folder."
     },
     {
       "title": "10. Tips & troubleshooting",
-      "body": "  - If the app does not start, check fescherfrenn.log next to it for the error.\n  - Hover over any button to see a short tooltip.\n  - To change your mind on length/type tracking after the event has locked, you would need to export the event JSON, reset, re-enable, and re-import. In practice, set this correctly at the start.\n  - Invoice numbers cannot be edited from the form to prevent duplicates. If you genuinely need to renumber an invoice, edit the event JSON file directly.\n\nContact: Robert Androvics - fescherfrenn@outlook.com"
+      "body": "  • Always run the program from its own folder so it finds your assets and events.\n  • Routine confirmations (saved, imported, exported) appear as a brief banner at the top and fade on their own; only questions, warnings and errors need a click.\n  • If the logo or an event seems missing, check the file is in the app folder.\n  • Switching language or theme takes effect immediately and is remembered."
     }
   ],
   "French": [
     {
       "title": "1. Pour commencer",
-      "body": "L'application gère un concours de pêche composé de trois manches (Manche 1 / Manche 2 / Manche 3) suivies d'une Finale. Vous allez :\n  1. Saisir les détails du concours (nom, lieu, date).\n  2. Décider si vous voulez enregistrer la longueur et le type de poisson pour chaque prise.\n  3. Charger la liste des participants.\n  4. Affecter les participants à chaque manche.\n  5. Enregistrer les prises au fil de la compétition.\n  6. Générer les rapports PDF et, au besoin, les factures.\n\nVous pouvez changer de langue au démarrage (English / Francais / Deutsch / Letzebuergesch). Votre choix est mémorisé."
+      "body": "Fëscherfrënn Stengefort gère un concours de pêche de club du début à la fin. L'application s'ouvre sur quatre onglets en bas — Participants, Saisie & classements, Rapports & factures, et Réglages & outils — ainsi qu'un gestionnaire de concours accessible via le lien « Gérer le concours » en haut.\n\nDéroulement habituel :\n  1. Ouvrir ou créer un concours (Gérer le concours).\n  2. Ajouter les participants et les affecter à chaque manche.\n  3. Saisir les prises manche par manche.\n  4. Consulter les classements et les qualifiés en direct.\n  5. Générer les PDF de résultats et, au besoin, les factures.\n\nLa langue et le thème se règlent dans Réglages & outils et sont mémorisés."
     },
     {
       "title": "2. Le concours",
-      "body": "Renseignez le nom du concours, le lieu et la date. Cochez « Enregistrer la longueur et le type de poisson » si vous voulez ces détails par prise.\nDès le premier clic sur « Gérer les participants », les détails du concours sont verrouillés - cela évite les modifications accidentelles pendant la compétition. Le réglage longueur/type se verrouille au même moment.\nLes concours créés avec les anciennes versions s'ouvrent automatiquement (leurs données sont mises à jour au schéma v3.0)."
+      "body": "Cliquez sur « Gérer le concours » en haut pour ouvrir le gestionnaire. Vous y définissez le nom, le lieu et la date du concours, le nombre de manches, le nombre de participants par manche et le nombre de qualifiés.\n\nLe gestionnaire liste aussi tous les concours enregistrés dans le dossier de l'application : sélectionnez-en un et choisissez Ouvrir pour le rouvrir, ou Parcourir… pour choisir un fichier ailleurs. Fermer revient à l'écran principal."
     },
     {
       "title": "3. Liste & manches",
-      "body": "Cliquez sur « Gérer les participants » pour ouvrir la fenêtre du gestionnaire. Deux panneaux côte à côte :\n  - Gauche : Liste des inscrits (tous les participants jamais saisis).\n  - Droite : participants affectés à la manche actuellement sélectionnée.\nLes boutons Ajouter / Modifier / Supprimer agissent sur la liste. Les boutons centraux « Ajouter à la manche » et « Retirer de la manche » transfèrent entre les deux côtés. Un nom déjà dans le panneau droit disparaît du panneau gauche (une affectation par manche) ; changer de manche réinitialise la vue.\n\nChaque participant a : un nom, un club optionnel, une catégorie optionnelle (Senior, Master, Vétéran, Dame, U20, U15, U10) et une remarque optionnelle.\nUn participant sans club est considéré comme « Individuel » - important au moment de la facturation."
+      "body": "Dans l'onglet Participants, composez la liste : ajoutez chaque pêcheur avec son nom, son club et sa catégorie (Senior, Master, Veteran, Lady, U20, U15, U10), puis affectez les participants à chaque manche.\n\nLe sélecteur de Manche en haut choisit la manche en cours. Il reste synchronisé avec le même sélecteur des pages Saisie et Rapports : le modifier à un endroit le modifie partout."
     },
     {
-      "title": "4. Enregistrer les prises",
-      "body": "Sur l'écran principal, avec une manche sélectionnée :\n  - Choisissez le participant dans la liste déroulante (seulement les personnes affectées à cette manche).\n  - Saisissez le poids en grammes.\n  - « Nombre de prises » permet d'enregistrer plusieurs poissons en une ligne (par ex. 3 petites brèmes pesées ensemble à 800 g). Quand la longueur/type est activée, ce champ est verrouillé à 1, car longueur et type concernent un seul poisson.\n  - Si l'option est activée, saisissez aussi la longueur (cm) et le type. Sinon ces champs sont désactivés.\n  - Cliquez sur « Enregistrer une prise ».\n\nPour corriger une prise par la suite, cliquez sur « Modifier les prises ». Sélectionnez une ligne, puis Modifier pour changer poids/nombre/longueur/type, ou Supprimer. Le nom du participant et l'heure restent verrouillés."
+      "title": "4. Saisie des prises",
+      "body": "Dans l'onglet Saisie & classements, choisissez la manche avec le sélecteur de Manche et enregistrez la prise de chaque pêcheur. Les poids se saisissent en grammes. Vous pouvez modifier ou supprimer une entrée en cas d'erreur.\n\nÀ mesure que vous saisissez les poids, les classements de la même page se mettent à jour automatiquement."
     },
     {
       "title": "5. Classements en direct",
-      "body": "La partie droite de l'écran principal affiche deux panneaux :\n  - Classement de la manche en cours (gauche).\n  - Classement général cumulé sur toutes les manches (droite).\nLes deux suivent l'ordre : Poids total, Plus de prises, Poissons les plus longs, Poissons les plus lourds.\nLorsque la longueur/type est désactivée, les sections Longueur/Poids individuel sont grisées et exclues du classement."
+      "body": "Les classements sont établis selon le poids total (en grammes) de la manche sélectionnée. Les égalités sont départagées de façon cohérente, et les pêcheurs déjà qualifiés lors d'une manche précédente sont reportés. Si une égalité tombe exactement sur la dernière place qualificative, l'application vous demande de décider qui passe."
     },
     {
       "title": "6. Rapports",
-      "body": "Sous les classements, le panneau Paramètres du rapport contrôle le contenu du PDF :\n  - Résumé de la manche - toujours inclus pour la manche en cours.\n  - Rapports individuels - optionnel, une page par participant.\n  - Classement combiné - Toutes manches - optionnel, disponible uniquement quand la Finale est sélectionnée.\n\nCliquez sur « Générer le rapport » pour produire un PDF. Chaque manche écrit dans son propre fichier :\n  YYYYMMDD_NomConcours_manche1.pdf\n  ..._manche2.pdf, ..._manche3.pdf, ..._final.pdf\nAinsi les rapports par manche émis pendant le concours sont conservés à côté du rapport final.\nLes rapports sont en paysage si longueur/type activée, en portrait sinon."
+      "body": "Dans l'onglet Rapports & factures, utilisez le sélecteur de Manche dans les options de rapport pour choisir la manche concernée, puis générez le PDF. Vous pouvez produire les résultats par manche ou un récapitulatif combiné du concours. Les rapports sont enregistrés en PDF, à imprimer ou à partager."
     },
     {
       "title": "7. Facturation",
-      "body": "Cliquez sur « Factures » pour ouvrir le gestionnaire de factures. La liste montre toutes les factures émises pour le concours en cours.\n  - Nouvelle facture : ouvre le formulaire.\n  - Modifier : modifier une facture sauvegardée (le numéro reste le même).\n  - Réimprimer : régénère le PDF à partir des données enregistrées.\n  - Supprimer : retire la facture ; le numéro n'est PAS réutilisé.\n\nDans le formulaire :\n  - Sur la toute première facture du concours, vous indiquez aussi le numéro de départ (par ex. 12). Ensuite il s'incrémente automatiquement, en lecture seule.\n  - Choisissez Club ou Individuel. Pour Club, la liste donne les clubs distincts des participants affectés. Pour Individuel, elle liste d'abord les vrais individuels (champ Club vide), puis un séparateur, puis tous les autres participants - filet de sécurité si quelqu'un est mal classé sous un club et doit être facturé en individuel.\n  - La quantité est suggérée automatiquement (somme des affectations du destinataire) et reste modifiable.\n  - La description est obligatoire et pré-remplie avec le nom et la date du concours.\n  - Le prix unitaire est en EUR, jusqu'à 2 décimales.\n  - Enregistrer & générer écrit à la fois la facture et le PDF dans :\n      {event_folder}/invoices/PREFIXE-NN-YYYY.pdf\nLes numéros de facture vivent uniquement à l'intérieur du concours et ne se reportent pas."
+      "body": "Toujours dans l'onglet Rapports & factures, vous pouvez générer les factures des participants en PDF avec votre identité visuelle. Les coordonnées de l'émetteur, les informations bancaires, les conditions de paiement et la couleur du bandeau proviennent de Réglages & outils : réglez-les une fois et chaque facture les reprend. Les factures ne dépendent pas de la manche sélectionnée."
     },
     {
-      "title": "8. Paramètres",
-      "body": "« Paramètres » ouvre la configuration de l'application : préfixe de facture, nom et adresse de l'émetteur, téléphone, e-mail, banque, IBAN, délai de paiement. Ces valeurs apparaissent sur chaque facture générée. Elles sont dans config.json à côté de l'application et persistent entre les concours.\n\nLe champ Numéro de compte (IBAN) accepte six groupes de quatre caractères : code banque (4 lettres) puis l'IBAN. Les espaces sont acceptés à la saisie et supprimés à l'enregistrement."
+      "title": "8. Réglages",
+      "body": "Réglages & outils regroupe les options de l'application :\n  • Apparence — Langue, puis Thème (Clair / Sombre / Système).\n  • Identité visuelle — importez votre logo, votre filigrane et l'icône de fenêtre (choisissez un PNG ; le fichier d'icône est généré pour vous).\n  • Factures — coordonnées de l'émetteur, banque, conditions et couleur du bandeau.\n  • Rapports — options de rapport et manche à rapporter.\n\nUtilisez le bouton Enregistrer pour conserver vos modifications."
     },
     {
       "title": "9. Fichiers et sauvegardes",
-      "body": "Chaque concours vit dans son propre dossier nommé YYYYMMDD_NomConcours, contenant :\n  - le fichier JSON du concours (données),\n  - les PDF de rapports par manche,\n  - un sous-dossier invoices/ avec les PDF de factures.\n\nChaque sauvegarde écrit aussi une copie horodatée dans ~/FescherfrennData/backups.\nLes erreurs sont consignées dans fescherfrenn.log à côté de l'application.\n\n« Exporter le concours » sauvegarde le concours actuel dans un fichier JSON portable. « Importer le concours » recharge un tel fichier."
+      "body": "Conservez le programme dans un seul dossier avec translations.json, help.json et config.json. Vos images (logo.png, watermark.png, logo.ico) s'y trouvent aussi, et chaque concours est stocké dans son propre sous-dossier.\n\nComme l'application travaille depuis son propre dossier, vos réglages, votre identité visuelle et vos concours restent en place lors d'une mise à jour — il suffit de remplacer le fichier du programme. Des sauvegardes automatiques sont conservées dans votre dossier personnel."
     },
     {
-      "title": "10. Astuces & dépannage",
-      "body": "  - Si l'application ne démarre pas, consultez fescherfrenn.log à côté du programme.\n  - Survolez les boutons pour voir une info-bulle.\n  - Pour changer l'option longueur/type après le verrouillage du concours, il faut exporter le JSON, réinitialiser, réactiver l'option et réimporter. En pratique, faites le bon choix au début.\n  - Les numéros de facture ne sont pas modifiables depuis le formulaire pour éviter les doublons. Si vous devez vraiment renuméroter, modifiez le fichier JSON du concours directement.\n\nContact : Robert Androvics - fescherfrenn@outlook.com"
+      "title": "10. Astuces et dépannage",
+      "body": "  • Lancez toujours le programme depuis son propre dossier pour qu'il retrouve vos images et concours.\n  • Les confirmations courantes (enregistré, importé, exporté) s'affichent en haut sous forme de bandeau bref qui disparaît seul ; seules les questions, alertes et erreurs demandent un clic.\n  • Si le logo ou un concours semble manquant, vérifiez que le fichier est dans le dossier de l'application.\n  • Le changement de langue ou de thème est immédiat et mémorisé."
     }
   ],
   "German": [
     {
       "title": "1. Erste Schritte",
-      "body": "Die Anwendung verwaltet einen Angelwettbewerb mit drei Runden (Manche 1 / Manche 2 / Manche 3) und einem Finale. Sie werden:\n  1. Die Veranstaltungsdaten erfassen (Name, Ort, Datum).\n  2. Entscheiden, ob L\u00e4nge und Fischart je Fang erfasst werden.\n  3. Die Teilnehmerliste laden.\n  4. Teilnehmer den Runden zuweisen.\n  5. F\u00e4nge w\u00e4hrend des Wettbewerbs erfassen.\n  6. Berichte als PDF erzeugen und bei Bedarf Rechnungen ausstellen.\n\nDie Sprache kann beim Start gewechselt werden (English / Francais / Deutsch / Letzebuergesch). Ihre Wahl wird gespeichert."
+      "body": "Fëscherfrënn Stengefort führt einen Vereins-Angelwettbewerb von Anfang bis Ende. Die App öffnet mit vier Reitern unten — Teilnehmer, Erfassen & Ranglisten, Berichte & Rechnungen und Einstellungen & Extras — sowie einer Wettbewerbsverwaltung, die Sie über den Link „Wettbewerb verwalten“ oben erreichen.\n\nTypischer Ablauf:\n  1. Wettbewerb öffnen oder anlegen (Wettbewerb verwalten).\n  2. Teilnehmer hinzufügen und den Runden zuordnen.\n  3. Fänge Runde für Runde erfassen.\n  4. Live-Ranglisten und Qualifikanten prüfen.\n  5. Ergebnis-PDFs und bei Bedarf Rechnungen erzeugen.\n\nSprache und Design werden in Einstellungen & Extras festgelegt und gemerkt."
     },
     {
-      "title": "2. Die Veranstaltung",
-      "body": "Geben Sie Name, Ort und Datum ein. Optional aktivieren Sie \u201eL\u00e4nge & Fischart erfassen\u201c, wenn F\u00e4nge mit diesen Details protokolliert werden sollen.\nMit dem ersten Klick auf \u201eTeilnehmer verwalten\u201c werden die Veranstaltungsdaten gesperrt - das sch\u00fctzt vor versehentlichen \u00c4nderungen w\u00e4hrend des Wettbewerbs. Die L\u00e4nge/Art-Einstellung wird im selben Moment gesperrt.\nVeranstaltungen aus \u00e4lteren App-Versionen \u00f6ffnen sich automatisch (ihre Daten werden beim Laden auf das v3.0-Schema aktualisiert)."
+      "title": "2. Der Wettbewerb",
+      "body": "Klicken Sie oben auf „Wettbewerb verwalten“, um die Verwaltung zu öffnen. Dort legen Sie Name, Ort und Datum des Wettbewerbs, die Anzahl der Runden, die Teilnehmer pro Runde und die Anzahl der Qualifikanten fest.\n\nDie Verwaltung listet auch alle im App-Ordner gespeicherten Wettbewerbe: einen auswählen und Öffnen wählen, oder Durchsuchen…, um eine Datei von anderswo zu laden. Schließen kehrt zum Hauptbildschirm zurück."
     },
     {
       "title": "3. Teilnehmerliste & Runden",
-      "body": "Klicken Sie auf \u201eTeilnehmer verwalten\u201c, um das Verwaltungsfenster zu \u00f6ffnen. Zwei Bereiche nebeneinander:\n  - Links: Teilnehmerliste (alle jemals erfassten Personen).\n  - Rechts: Teilnehmer der aktuell gew\u00e4hlten Runde.\nHinzuf\u00fcgen / Bearbeiten / Entfernen wirkt auf die Liste. Die mittleren Schaltfl\u00e4chen \u201eZur Runde hinzuf\u00fcgen\u201c und \u201eAus Runde entfernen\u201c verschieben Eintr\u00e4ge. Ein Name im rechten Bereich verschwindet aus dem linken Bereich (eine Zuweisung pro Runde). Beim Wechsel der Runde wird die Anzeige zur\u00fcckgesetzt.\n\nJeder Teilnehmer hat: Name, optionaler Verein, optionale Kategorie (Senior, Master, Veteran, Dame, U20, U15, U10), optionale Bemerkung.\nEin Teilnehmer ohne Verein gilt als \u201eEinzelperson\u201c - das ist bei der Rechnungsstellung relevant."
+      "body": "Im Reiter Teilnehmer stellen Sie die Liste zusammen: jeden Angler mit Name, Verein und Kategorie (Senior, Master, Veteran, Lady, U20, U15, U10) hinzufügen und die Teilnehmer den Runden zuordnen.\n\nDie Runden-Auswahl oben bestimmt die aktuelle Runde. Sie bleibt mit der gleichen Auswahl auf den Seiten Erfassen und Berichte synchron — ändern Sie sie an einer Stelle, ändert sie sich überall."
     },
     {
-      "title": "4. F\u00e4nge erfassen",
-      "body": "Im Hauptfenster, mit einer ausgew\u00e4hlten Runde:\n  - Teilnehmer aus der Liste w\u00e4hlen (nur Personen dieser Runde sind sichtbar).\n  - Gewicht in Gramm eingeben.\n  - \u201eAnzahl der F\u00e4nge\u201c erlaubt mehrere Fische in einer Zeile (z. B. 3 kleine Brassen zusammen 800 g). Bei aktivierter L\u00e4nge/Art-Erfassung ist dies auf 1 gesperrt, da L\u00e4nge und Art zu einem einzelnen Fisch geh\u00f6ren.\n  - Bei aktivierter Erfassung tragen Sie auch L\u00e4nge (cm) und Fischart ein. Sonst sind diese Felder deaktiviert.\n  - Klicken Sie auf \u201eFang erfassen\u201c.\n\nUm einen Fang sp\u00e4ter zu korrigieren, klicken Sie auf \u201eF\u00e4nge bearbeiten\u201c. Zeile w\u00e4hlen, dann Bearbeiten f\u00fcr Gewicht/Anzahl/L\u00e4nge/Art, oder L\u00f6schen. Teilnehmername und Uhrzeit bleiben gesperrt."
+      "title": "4. Fänge erfassen",
+      "body": "Im Reiter Erfassen & Ranglisten wählen Sie mit der Runden-Auswahl die Runde und erfassen den Fang jedes Anglers. Gewichte werden in Gramm eingegeben. Ein Eintrag lässt sich bei einem Fehler bearbeiten oder löschen.\n\nWährend Sie Gewichte eingeben, aktualisieren sich die Ranglisten auf derselben Seite automatisch."
     },
     {
       "title": "5. Live-Ranglisten",
-      "body": "Die rechte Seite des Hauptfensters zeigt zwei Panele:\n  - Rangliste der aktuellen Runde (links).\n  - Gesamtwertung \u00fcber alle Runden (rechts).\nBeide folgen der Reihenfolge: Gesamtgewicht, Meiste F\u00e4nge, L\u00e4ngste Fische, Schwerste Fische.\nIst L\u00e4nge/Art deaktiviert, sind L\u00e4ngste/Schwerste ausgegraut und nicht in der Wertung."
+      "body": "Die Ranglisten werden nach Gesamtgewicht (in Gramm) der gewählten Runde geordnet. Gleichstände werden einheitlich aufgelöst, und Angler, die sich in einer früheren Runde bereits qualifiziert haben, werden übernommen. Fällt ein Gleichstand genau auf den letzten Qualifikationsplatz, fragt die App, wer weiterkommt."
     },
     {
       "title": "6. Berichte",
-      "body": "Unter den Ranglisten steuert das Panel \u201eBerichtseinstellungen\u201c den PDF-Inhalt:\n  - Runden-Zusammenfassung - immer enthalten f\u00fcr die aktuelle Runde.\n  - Einzelberichte - optional, eine Seite pro Teilnehmer.\n  - Kombinierte Rangliste - Alle Runden - optional, nur verf\u00fcgbar wenn \u201eFinale\u201c gew\u00e4hlt ist.\n\nKlick auf \u201eBericht erstellen\u201c erzeugt ein PDF. Jede Runde schreibt in eine eigene Datei:\n  YYYYMMDD_Eventname_manche1.pdf\n  ..._manche2.pdf, ..._manche3.pdf, ..._final.pdf\nSo bleiben die w\u00e4hrend des Wettbewerbs ausgegebenen Rundenberichte neben dem Finalbericht erhalten.\nBerichte sind im Querformat bei aktiver L\u00e4nge/Art-Erfassung, sonst im Hochformat."
+      "body": "Im Reiter Berichte & Rechnungen wählen Sie mit der Runden-Auswahl in den Berichtsoptionen die betreffende Runde und erzeugen dann das PDF. Sie können Ergebnisse je Runde oder eine kombinierte Wettbewerbsübersicht erstellen. Berichte werden als PDF gespeichert, zum Drucken oder Teilen."
     },
     {
-      "title": "7. Rechnungsstellung",
-      "body": "Klick auf \u201eRechnungen\u201c \u00f6ffnet die Rechnungsverwaltung. Die Liste zeigt alle f\u00fcr die aktuelle Veranstaltung ausgestellten Rechnungen.\n  - Neue Rechnung: \u00f6ffnet das Rechnungsformular.\n  - Bearbeiten: gespeicherte Rechnung \u00e4ndern (Nummer bleibt gleich).\n  - Erneut drucken: PDF aus den gespeicherten Daten neu erzeugen.\n  - L\u00f6schen: entfernt die Rechnung; die Nummer wird NICHT wiederverwendet.\n\nIm Formular:\n  - Bei der allerersten Rechnung der Veranstaltung legen Sie die Startnummer fest (z. B. 12). Danach wird sie automatisch hochgez\u00e4hlt und ist schreibgesch\u00fctzt.\n  - W\u00e4hlen Sie Verein oder Einzelperson. Bei Verein listet das Dropdown die unterschiedlichen Vereine der zugewiesenen Teilnehmer. Bei Einzelperson erscheinen zuerst die echten Einzelpersonen (leeres Vereinsfeld), dann ein Trennstrich, dann alle anderen zugewiesenen Teilnehmer - als Sicherheitsnetz, falls jemand f\u00e4lschlich einem Verein zugeordnet wurde aber einzeln abgerechnet werden soll.\n  - Die Menge wird automatisch vorgeschlagen (Summe aller Zuweisungen des Empf\u00e4ngers) und bleibt editierbar.\n  - Beschreibung ist Pflicht, vorbelegt mit Eventname und Datum.\n  - St\u00fcckpreis in EUR, bis zu zwei Dezimalstellen.\n  - Speichern & PDF erzeugen schreibt sowohl die Rechnung als auch das PDF nach:\n      {event_folder}/invoices/PRAEFIX-NN-YYYY.pdf\nRechnungsnummern existieren nur innerhalb der Veranstaltung und werden nicht \u00fcbernommen."
+      "title": "7. Rechnungen",
+      "body": "Ebenfalls im Reiter Berichte & Rechnungen erzeugen Sie Teilnehmerrechnungen als PDFs im eigenen Design. Aussteller-Angaben, Bankdaten, Zahlungsbedingungen und Bannerfarbe stammen aus Einstellungen & Extras: einmal einstellen, und jede Rechnung übernimmt sie. Rechnungen hängen nicht von der gewählten Runde ab."
     },
     {
       "title": "8. Einstellungen",
-      "body": "\u201eEinstellungen\u201c \u00f6ffnet die Anwendungskonfiguration: Rechnungspr\u00e4fix, Name und Adresse des Ausstellers, Telefon, E-Mail, Bank, IBAN, Zahlungsziel. Diese Werte erscheinen auf jeder erzeugten Rechnung. Sie liegen in config.json neben der App und bleiben \u00fcber alle Events erhalten.\n\nDas Feld Kontonummer (IBAN) akzeptiert sechs Gruppen zu je vier Zeichen: Bankleitzahl (4 Buchstaben), dann die IBAN. Leerzeichen sind beim Eingeben erlaubt und werden beim Speichern entfernt."
+      "body": "Einstellungen & Extras enthält die App-Optionen:\n  • Darstellung — Sprache, dann Design (Hell / Dunkel / System).\n  • Branding — Logo, Wasserzeichen und Fenstersymbol importieren (PNG wählen; die Symboldatei wird für Sie erzeugt).\n  • Rechnungen — Aussteller-Angaben, Bank, Bedingungen und Bannerfarbe.\n  • Berichte — Berichtsoptionen und zu berichtende Runde.\n\nMit der Schaltfläche Speichern werden Ihre Änderungen behalten."
     },
     {
       "title": "9. Dateien und Sicherungen",
-      "body": "Jede Veranstaltung lebt in ihrem eigenen Ordner YYYYMMDD_Eventname, der enth\u00e4lt:\n  - die Event-JSON-Datei (Daten),\n  - die Berichts-PDFs pro Runde,\n  - einen Unterordner invoices/ mit den Rechnungs-PDFs.\n\nJede Speicherung schreibt zus\u00e4tzlich eine Zeitstempel-Sicherung in ~/FescherfrennData/backups.\nFehler werden in fescherfrenn.log neben der Anwendung protokolliert.\n\n\u201eEvent exportieren\u201c speichert das aktuelle Event als portable JSON-Datei. \u201eEvent importieren\u201c l\u00e4dt eine solche Datei wieder."
+      "body": "Bewahren Sie das Programm in einem Ordner zusammen mit translations.json, help.json und config.json auf. Ihre Bilder (logo.png, watermark.png, logo.ico) liegen ebenfalls dort, und jeder Wettbewerb wird in einem eigenen Unterordner gespeichert.\n\nDa die App aus ihrem eigenen Ordner arbeitet, bleiben Ihre Einstellungen, Ihr Branding und Ihre Wettbewerbe bei einem Update erhalten — ersetzen Sie einfach die Programmdatei. Automatische Sicherungen liegen in Ihrem Benutzerordner."
     },
     {
-      "title": "10. Tipps & Fehlerbehebung",
-      "body": "  - Wenn die App nicht startet, pr\u00fcfen Sie fescherfrenn.log daneben.\n  - Mit der Maus \u00fcber eine Schaltfl\u00e4che fahren zeigt einen Tooltip.\n  - Um die L\u00e4nge/Art-Einstellung nach Sperrung des Events zu \u00e4ndern, m\u00fcssten Sie das JSON exportieren, zur\u00fccksetzen, neu aktivieren und reimportieren. In der Praxis: gleich am Anfang korrekt setzen.\n  - Rechnungsnummern lassen sich nicht vom Formular bearbeiten, um Duplikate zu vermeiden. Wenn Sie wirklich umnummerieren m\u00fcssen, bearbeiten Sie die Event-JSON-Datei direkt.\n\nKontakt: Robert Androvics - fescherfrenn@outlook.com"
+      "title": "10. Tipps und Fehlerbehebung",
+      "body": "  • Starten Sie das Programm stets aus seinem eigenen Ordner, damit es Bilder und Wettbewerbe findet.\n  • Übliche Bestätigungen (gespeichert, importiert, exportiert) erscheinen oben kurz als Banner und verschwinden von selbst; nur Fragen, Warnungen und Fehler erfordern einen Klick.\n  • Fehlt das Logo oder ein Wettbewerb, prüfen Sie, ob die Datei im App-Ordner liegt.\n  • Ein Wechsel von Sprache oder Design wirkt sofort und wird gemerkt."
     }
   ],
   "Luxembourgish": [
     {
-      "title": "1. Aleedung",
-      "body": "D'Applikatioun ass fir e Fëschkonkurrenz gemaach, mat dräi Manchen (Manche 1 / Manche 2 / Manche 3) gefolltegt vun enger Finale. Dir gitt:\n  1. D'Evenementsdetailer aginn (Numm, Plaz, Datum).\n  2. Decid\u00e9ieren ob Längt a Fëschzort fir all Fang opgeholl ginn.\n  3. D'Lëscht vun de Participanten lueden.\n  4. D'Participanten den Manchen zouweisen.\n  5. D'Fäng während der Konkurrenz erfaasse.\n  6. Bericht-PDFs an, wann néideg, Rechnungen erzeegen.\n\nDir k\u00ebnnt d'Sprooch beim Start wieselen (English / Francais / Deutsch / Letzebuergesch). \u00c4r Wiel g\u00ebtt gespäichert."
+      "title": "1. Lass leeën",
+      "body": "Fëscherfrënn Stengefort féiert e Veräins-Fëschconcours vum Ufank bis zum Schluss. D'App geet op mat véier Reider ënnen — Participanten, Erfassen & Klassementer, Rapporten & Rechnungen, an Astellungen & Tools — plus eng Concours-Verwaltung, déi Dir iwwer de Link „Concours verwalten“ uewen erreecht.\n\nTypeschen Oflaf:\n  1. E Concours opmaachen oder uleeën (Concours verwalten).\n  2. Participanten derbäisetzen an op all Manche verdeelen.\n  3. D'Faang Manche fir Manche erfassen.\n  4. D'Klassementer an d'Qualifizéierter live nokucken.\n  5. Resultat-PDFen an, wann néideg, Rechnungen erstellen.\n\nSprooch an Theema gi an Astellungen & Tools agestallt a gi gemierkt."
     },
     {
-      "title": "2. D'Evenement",
-      "body": "Gitt den Numm vum Evenement, d'Plaz an den Datum un. Optional gitt der \u201eL\u00e4ngt & F\u00ebschzort festhalen\u201c un wann d'F\u00e4ng mat dëse Detailer protokoll\u00e9iert ginn.\nBeim éischte Klick op \u201eParticipanten verwalten\u201c gi d'Evenementsdetailer gespaart - d\u00ebs hëlleft géint accidentell \u00c4nnerunge wärend der Konkurrenz. D'L\u00e4ngt/Zort-Astellung g\u00ebtt am selwechte Moment gespaart.\nAl Evenementer aus vir\u00e9ier Versioune \u00ebffnen sech automatesch (hir Donn\u00e9eë gi beim Lueden op den v3.0-Schema gebruecht)."
+      "title": "2. De Concours",
+      "body": "Klickt uewen op „Concours verwalten“ fir d'Verwaltung opzemaachen. Do setzt Dir den Numm, de Plaz an d'Datum vum Concours, d'Zuel vun de Manchen, wéi vill Participanten pro Manche matmaachen, a wéi vill sech qualifizéieren.\n\nD'Verwaltung weist och all Concours, dee am App-Dossier gespäichert ass: ee auswielen an Opmaachen wielen fir e nees opzemaachen, oder Duerchsichen… fir eng Datei anzwousch anescht ze huelen. Zoumaachen geet zréck op den Haaptschierm."
     },
     {
-      "title": "3. L\u00ebscht & Manchen",
-      "body": "Klickt op \u201eParticipanten verwalten\u201c fir de Verwaltungsfenster opzemaachen. Zwee Panneauen niewenteneen:\n  - L\u00e9nks: Konkurrenz-L\u00ebscht (all jee aginn Participanten).\n  - Riets: Participanten déi der aktueller Manche zougewisen sinn.\nDerb\u00e4isetzen / \u00c4nneren / L\u00e4schen wierkt op d'L\u00ebscht. D'M\u00ebttbutton \u201eAn d'Manche derb\u00e4isetzen\u201c an \u201eVun der Manche ewechhuelen\u201c verréckelen tëschent béide S\u00e4iten. En Numm dee schonn an der rietsem Panneau ass verschwannt aus dem l\u00e9nks (eng Zouweisung pro Manche); d'Wiessele vun der Manche setzt d'Vue zer\u00e9ck.\n\nAll Participant huet: Numm, optionellen Veräin, optionell Kategorie (Senior, Master, Veteran, Dame, U20, U15, U10), optionell Remark.\nE Participant ouni V\u00ebr\u00e4in g\u00ebtt als \u201eEenzelpersoun\u201c behandelt - wichteg bei der Rechnungsstellung."
+      "title": "3. Lëscht & Manchen",
+      "body": "Am Reider Participanten baut Dir d'Lëscht op: all Fëscher mat Numm, Veräin a Kategorie (Senior, Master, Veteran, Lady, U20, U15, U10) derbäisetzen an d'Participanten op all Manche verdeelen.\n\nDe Manche-Selektor uewen wielt déi aktuell Manche. Hie bleift mam selwechte Selektor op de Säiten Erfassen a Rapporten synchron — änner en op enger Plaz, ännert en iwwerall."
     },
     {
-      "title": "4. F\u00e4ng erfaasse",
-      "body": "Um Haaptbildschierm, mat enger ausgewielter Manche:\n  - W\u00e4hlt de Participant aus der L\u00ebscht (n\u00ebmme Leit déi der Manche zougewisen sinn).\n  - Gitt d'Gewiicht a Gramm an.\n  - \u201eAnzuel F\u00e4ng\u201c erlaabt e puer F\u00ebsch an enger Linn ze registr\u00e9ieren (z. B. 3 kleng Brachsen zesumme bei 800 g). Wann L\u00e4ngt/Zort aktiv\u00e9iert ass, ass d\u00ebst op 1 gespaart, well L\u00e4ngt an Zort fir een eenzege F\u00ebsch g\u00ebllen.\n  - Wann d'Erfaassung aktiv ass, gitt och d'L\u00e4ngt (cm) an d'Zort un. Soss sinn dës Felder deaktiv\u00e9iert.\n  - Klickt op \u201eFang erfaasse\u201c.\n\nFir e Fang sp\u00e4ider ze korrig\u00e9ieren, klickt op \u201eF\u00e4ng \u00e4nneren\u201c. W\u00e4hlt eng Linn, dann \u00c4nneren fir Gewiicht/Anzuel/L\u00e4ngt/Zort, oder L\u00e4schen. Numm an Auerz\u00e4it bleiwe gespaart."
+      "title": "4. Faang erfassen",
+      "body": "Am Reider Erfassen & Klassementer wielt Dir mam Manche-Selektor d'Manche an erfaasst de Faang vun all Fëscher. D'Gewiichter ginn a Gramm aginn. Een Andrag kann ee bei engem Feeler änneren oder läschen.\n\nWärend Dir d'Gewiichter aginn, aktualiséieren sech d'Klassementer op der selwechter Säit automatesch."
     },
     {
       "title": "5. Live-Klassementer",
-      "body": "Rietsem um Haaptbildschierm gi zwee Panele:\n  - Klassement vun der aktueller Manche (l\u00e9nks).\n  - Gesamtklassement iwwer all Manchen (riets).\nBéid folgen der Reihenfolleg: Gesamtgewiicht, M\u00e9scht F\u00e4ng, L\u00e4ngste F\u00ebsch, Schw\u00e9ierste F\u00ebsch.\nWann L\u00e4ngt/Zort deaktiv\u00e9iert ass, sinn d'L\u00e4ngste/Schw\u00e9ierst gegraift an net mat gez\u00e4ielt."
+      "body": "D'Klassementer ginn no Gesamtgewiicht (a Gramm) vun der gewielter Manche geuerdnet. Gläichstänn ginn op eng konsequent Manéier opgeléist, a Fëscher, déi sech an enger fréierer Manche scho qualifizéiert hunn, ginn iwwerholl. Fällt e Gläichstand genee op déi lescht Qualifikatiounsplaz, freet d'App Iech, wien weiderkënnt."
     },
     {
-      "title": "6. Berichter",
-      "body": "Ennert de Klassementer kontroll\u00e9iert d'Panel Bericht\u00ebnstellungen den PDF-Inhalt:\n  - Manche-Resum\u00e9 - \u00ebmmer enthalen f\u00fcr déi aktuell Manche.\n  - Eenzelbericht\u00ebr - optionell, eng S\u00e4it pro Participant.\n  - Kombin\u00e9iert Klassement - all Manchen - optionell, nëmme verf\u00fcgbar wann d'Finale gew\u00e4hlt ass.\n\nKlickt op \u201eBericht erzeegen\u201c fir e PDF ze kreéieren. All Manche schreift an seng eege Fichier:\n  YYYYMMDD_Eventnumm_manche1.pdf\n  ..._manche2.pdf, ..._manche3.pdf, ..._final.pdf\nSou bleiwen d'Berichter pro Manche, ausgestallt während der Konkurrenz, niewent dem Finalbericht erhal.\nBerichter sinn am Querformat wann L\u00e4ngt/Zort aktiv ass, soss am Hochformat."
+      "title": "6. Rapporten",
+      "body": "Am Reider Rapporten & Rechnungen benotzt Dir de Manche-Selektor an den Rapport-Optiounen fir déi betraffe Manche ze wielen, an erstellt dann d'PDF. Dir kënnt Resultater pro Manche oder eng kombinéiert Concours-Iwwersiicht maachen. D'Rapporten ginn als PDF gespäichert, fir ze drécken oder ze deelen."
     },
     {
       "title": "7. Rechnungen",
-      "body": "Klickt op \u201eRechnungen\u201c fir de Rechnungsverwalter opzemaachen. D'L\u00ebscht weist all Rechnung déi fir d'aktuell Evenement ausgestallt gouf.\n  - Nei Rechnung: \u00ebffnet de Rechnungsformular.\n  - \u00c4nneren: gespäichert Rechnung modif\u00e9ieren (Nummer bleift d\u00e9iselwecht).\n  - Nei drécken: PDF erneit aus de gespäichert Donn\u00e9eën erzeegen.\n  - L\u00e4schen: l\u00e4scht d'Rechnung; d'Nummer g\u00ebtt NET nei benotzt.\n\nAm Formular:\n  - F\u00fcr d\u00e9i alleréischt Rechnung vum Evenement bestëmmt Dir och d'Startnummer (z. B. 12). Duerno z\u00e4ielt s\u00e9 automatesch er\u00e9m an ass schreifgespaart.\n  - W\u00e4hlt Verein oder Eenzelpersoun. F\u00fcr Verein l\u00ebscht d'Dropdown d\u00e9i ënnerschiddlech Vereiner vun zougewisen Participanten. F\u00fcr Eenzelpersoun stinn zueréischt d\u00e9i richteg Eenzelpersounen (eidel Vereinsfeld), dann e Separator, dann all aner zougewisen Participanten - als Sécherheetsnetz wann e Participant falsch ënner engem Verein klass\u00e9iert war.\n  - D'Quantit\u00e9it g\u00ebtt automatesch virgeschloen (Summ vun alle Zouweisunge vum Empfänger) a bleift \u00e4nnerbar.\n  - D'Beschreiwung ass obligatoresch a virausgefëllt mam Eventnumm an Datum.\n  - St\u00e9ckpräis ass an EUR, bis zwou Dezimalen.\n  - Späicheren & PDF erstellen schreift souwuel d'Rechnungsentr\u00e9e wéi och de PDF an:\n      {event_folder}/invoices/PR\u00c4FIX-NN-YYYY.pdf\nRechnungsnummeren existéieren nëmmen am Evenement an ginn net iwwerschriwwen."
+      "body": "Och am Reider Rapporten & Rechnungen kënnt Dir Participanten-Rechnungen als PDF mat ärem eegene Design erstellen. D'Emetteur-Donnéeën, d'Bankinformatiounen, d'Bezuelbedéngungen an d'Bannerfaarf kommen aus Astellungen & Tools: eemol astellen, an all Rechnung iwwerhëlt se. D'Rechnungen hänken net vun der gewielter Manche of."
     },
     {
       "title": "8. Astellungen",
-      "body": "\u201eAstellungen\u201c \u00f6ffnet d'Applikatiounskonfiguratioun: Rechnungspräfix, Numm an Adress vum Aussteller, Telefon, E-Mail, Bank, IBAN, Bezuelfrist. D\u00ebs Wäerter erschéngen op all generéierter Rechnung. Si liewen an config.json niewent der App a bleiwe fir all Evenementer.\n\nD'Feld Kontosnummer (IBAN) acceptéiert sechs Gruppe vu véier Zeechen: Bankcode (4 Buschtawen), dann den IBAN. Spaces si beim Tippen erlaabt a ginn beim Späicheren ewechgeholl."
+      "body": "Astellungen & Tools enthält d'App-Optiounen:\n  • Erscheinungsbild — Sprooch, dann Theema (Hell / Donkel / System).\n  • Branding — ärt Logo, Waasserzeechen a Fënster-Symbol importéieren (e PNG wielen; d'Symbol-Datei gëtt fir Iech erstallt).\n  • Rechnungen — Emetteur-Donnéeën, Bank, Bedéngungen a Bannerfaarf.\n  • Rapporten — Rapport-Optiounen an d'Manche fir ze rapportéieren.\n\nBenotzt de Knäppchen Späicheren fir är Ännerungen ze behalen."
     },
     {
-      "title": "9. Fichieren a Sécherungen",
-      "body": "All Evenement lieft a sengem eegene Dossier mam Numm YYYYMMDD_Eventnumm, mat:\n  - der Event-JSON-Datei (Donn\u00e9eën),\n  - de Berichter-PDFs pro Manche,\n  - engem Ënnerdossier invoices/ mat den Rechnungs-PDFs.\n\nAll Späicheren schreift och eng Sécherheetscopie mat Z\u00e4itstempel an ~/FescherfrennData/backups.\nFehler ginn an fescherfrenn.log niewent der App protokoll\u00e9iert.\n\n\u201eEvenement exportéieren\u201c späichert d'aktuell Evenement als portable JSON-Datei. \u201eEvenement import\u00e9ieren\u201c lued s\u00e9 zer\u00e9ck."
+      "title": "9. Dateien a Backupen",
+      "body": "Haalt de Programm an engem eenzege Dossier zesumme mat translations.json, help.json an config.json. Är Biller (logo.png, watermark.png, logo.ico) leien och do, an all Concours gëtt an engem eegene Ënnerdossier gespäichert.\n\nWell d'App aus hirem eegene Dossier schafft, bleiwen är Astellungen, ärt Branding an är Concoursen bei engem Update op der Plaz — ersetzt einfach d'Programmdatei. Automatesch Backupen leien an ärem perséinlechen Dossier."
     },
     {
-      "title": "10. T\u00ebpps & Fehlerbehiewung",
-      "body": "  - Wann d'App net start, kuckt fescherfrenn.log niewent der Applikatioun.\n  - Bleift mat der Maus op enger Schaltfl\u00e4ch fir e kuerze Tooltip ze gesinn.\n  - Fir d'L\u00e4ngt/Zort-Astellung no der Späerrung vum Event z\u00e4nneren, m\u00fcsst Dir d'JSON exportéieren, zer\u00e9cksetzen, d'Astellung nei aktivéieren a reimportéieren. An der Praxis: gleich um Ufank richteg astellen.\n  - Rechnungsnummeren si vum Formular aus net \u00e4nnerbar, fir Duplikater ze vermeiden. Wann Dir wierklech nei numm\u00e9ieren musst, modif\u00e9iert d'Event-JSON-Datei direkt.\n\nKontakt: Robert Androvics - fescherfrenn@outlook.com"
+      "title": "10. Tipps an Depannage",
+      "body": "  • Start de Programm ëmmer aus sengem eegene Dossier, fir datt en är Biller a Concoursen fënnt.\n  • Üblech Bestätegungen (gespäichert, importéiert, exportéiert) erschéngen uewen kuerz als Banner a verschwannen vu selwer; nëmme Froen, Warnungen a Feeler brauchen e Klick.\n  • Feelt d'Logo oder e Concours, kuckt no, ob d'Datei am App-Dossier läit.\n  • E Wiessel vu Sprooch oder Theema wierkt direkt a gëtt gemierkt."
+    }
+  ],
+  "Portuguese": [
+    {
+      "title": "1. Primeiros passos",
+      "body": "O Fëscherfrënn Stengefort gere um concurso de pesca do clube do início ao fim. A aplicação abre com quatro separadores em baixo — Participantes, Registo e classificações, Relatórios e faturas, e Definições e ferramentas — mais um gestor de concursos a que acede pela ligação “Gerir concurso” no topo.\n\nFluxo habitual:\n  1. Abrir ou criar um concurso (Gerir concurso).\n  2. Adicionar participantes e atribuí-los a cada manga.\n  3. Registar as capturas manga a manga.\n  4. Consultar as classificações e os apurados em tempo real.\n  5. Gerar os PDF de resultados e, quando necessário, as faturas.\n\nO idioma e o tema definem-se em Definições e ferramentas e ficam memorizados."
+    },
+    {
+      "title": "2. O concurso",
+      "body": "Clique em “Gerir concurso” no topo para abrir o gestor. Aí define o nome, o local e a data do concurso, o número de mangas, quantos participantes entram por manga e quantos se apuram.\n\nO gestor lista também todos os concursos guardados na pasta da aplicação: selecione um e escolha Abrir para o reabrir, ou Procurar… para escolher um ficheiro noutro local. Fechar volta ao ecrã principal."
+    },
+    {
+      "title": "3. Lista e mangas",
+      "body": "No separador Participantes compõe a lista: adicione cada pescador com nome, clube e categoria (Senior, Master, Veteran, Lady, U20, U15, U10) e atribua os participantes a cada manga.\n\nO seletor de Manga no topo escolhe a manga em que está a trabalhar. Mantém-se sincronizado com o mesmo seletor das páginas Registo e Relatórios: alterá-lo num sítio altera-o em todo o lado."
+    },
+    {
+      "title": "4. Registar capturas",
+      "body": "No separador Registo e classificações, escolha a manga com o seletor de Manga e registe a captura de cada pescador. Os pesos introduzem-se em gramas. Pode editar ou eliminar um registo se errar.\n\nÀ medida que introduz os pesos, as classificações na mesma página atualizam-se automaticamente."
+    },
+    {
+      "title": "5. Classificações em tempo real",
+      "body": "As classificações são ordenadas pelo peso total (em gramas) da manga selecionada. Os empates são resolvidos de forma coerente e os pescadores já apurados numa manga anterior transitam. Se um empate cair exatamente no último lugar de apuramento, a aplicação pede-lhe para decidir quem passa."
+    },
+    {
+      "title": "6. Relatórios",
+      "body": "No separador Relatórios e faturas, use o seletor de Manga nas opções de relatório para escolher a manga a que o relatório diz respeito e gere o PDF. Pode produzir resultados por manga ou um resumo combinado do concurso. Os relatórios são guardados em PDF, para imprimir ou partilhar."
+    },
+    {
+      "title": "7. Faturação",
+      "body": "Ainda no separador Relatórios e faturas pode gerar as faturas dos participantes em PDF com a sua identidade visual. Os dados do emissor, a informação bancária, as condições de pagamento e a cor da faixa vêm de Definições e ferramentas: defina-os uma vez e cada fatura usa-os. As faturas não dependem da manga selecionada."
+    },
+    {
+      "title": "8. Definições",
+      "body": "Definições e ferramentas reúne as opções da aplicação:\n  • Aparência — Idioma e, a seguir, Tema (Claro / Escuro / Sistema).\n  • Identidade visual — importe o seu logótipo, marca de água e ícone de janela (escolha um PNG; o ficheiro do ícone é gerado por si).\n  • Faturas — dados do emissor, banco, condições e cor da faixa.\n  • Relatórios — opções de relatório e manga a relatar.\n\nUse o botão Guardar para manter as suas alterações."
+    },
+    {
+      "title": "9. Ficheiros e cópias de segurança",
+      "body": "Mantenha o programa numa única pasta, juntamente com translations.json, help.json e config.json. As suas imagens (logo.png, watermark.png, logo.ico) ficam aí também e cada concurso é guardado na sua própria subpasta.\n\nComo a aplicação trabalha a partir da sua própria pasta, as definições, a identidade visual e os concursos mantêm-se ao atualizar para uma nova versão — basta substituir o ficheiro do programa. As cópias de segurança automáticas ficam na sua pasta pessoal."
+    },
+    {
+      "title": "10. Sugestões e resolução de problemas",
+      "body": "  • Execute sempre o programa a partir da sua própria pasta para que encontre as imagens e os concursos.\n  • As confirmações de rotina (guardado, importado, exportado) surgem no topo como uma faixa breve que desaparece sozinha; só perguntas, avisos e erros precisam de um clique.\n  • Se o logótipo ou um concurso parecer em falta, verifique se o ficheiro está na pasta da aplicação.\n  • Mudar de idioma ou de tema tem efeito imediato e fica memorizado."
     }
   ]
 }
