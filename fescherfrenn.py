@@ -23,7 +23,7 @@ except ImportError:
 
 TEMP_DATA_FILE = "temp_fishing_data.json"
 BACKUP_DIR = os.path.expanduser("~/FescherfrennData/backups")
-APP_VERSION = "4.7"
+APP_VERSION = "4.8g"
 
 # Set up logging
 logging.basicConfig(filename='fescherfrenn.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -193,6 +193,19 @@ def _resource_path(name):
     if os.path.exists(candidate):
         return candidate
     return name
+
+
+def app_base_dir():
+    """Stable folder where the app and its event subfolders live, independent
+    of the working directory at launch (which differs when started from
+    Finder / a bundle). Used so the saved-events list always finds events
+    sitting next to the program."""
+    try:
+        if getattr(sys, "frozen", False):
+            return os.path.dirname(os.path.abspath(sys.executable))
+        return os.path.dirname(os.path.abspath(__file__))
+    except Exception:
+        return os.getcwd()
 
 
 def load_translations():
@@ -436,7 +449,9 @@ class FishingApp:
             "accent": "#1a73e8", "accent_fg": "#ffffff", "border": "#d3d7dd",
             "tree_bg": "#ffffff", "tree_heading_bg": "#e8eaed", "sel_bg": "#1a73e8", "sel_fg": "#ffffff",
             "weight_fg": "#5f6368",
-            "btn_bg": "#ffffff", "btn_light": "#ffffff", "btn_dark": "#c4c9d0", "btn_hover": "#eef3fd",
+            "btn_bg": "#e6e9ee", "btn_hover": "#d4dae3", "btn_pressed": "#c2cad6",
+            "btn_light": "#ffffff", "btn_dark": "#aab2bd", "btn_fg": "#1a1c1e",
+            "accent_hover": "#1769d6", "accent_pressed": "#155cbe",
             "nav_bg": "#e4e7eb", "nav_fg": "#1a1c1e", "nav_active_bg": "#1a73e8", "nav_active_fg": "#ffffff",
             "badges": {"Q": ("#1e8e3e", "#ffffff"), "A": ("#1a73e8", "#ffffff"),
                        "?": ("#f9ab00", "#1a1c1e"), "D": ("#d93025", "#ffffff")},
@@ -446,7 +461,9 @@ class FishingApp:
             "accent": "#5b9bff", "accent_fg": "#0b1320", "border": "#3a3d42",
             "tree_bg": "#26282c", "tree_heading_bg": "#34373c", "sel_bg": "#3b6fb6", "sel_fg": "#ffffff",
             "weight_fg": "#9aa0a6",
-            "btn_bg": "#2b2d31", "btn_light": "#3a3d42", "btn_dark": "#161719", "btn_hover": "#33373d",
+            "btn_bg": "#3a3e44", "btn_hover": "#474c54", "btn_pressed": "#2c2f34",
+            "btn_light": "#4c515a", "btn_dark": "#22252a", "btn_fg": "#e8eaed",
+            "accent_hover": "#4a8af0", "accent_pressed": "#3f7ad8",
             "nav_bg": "#26282c", "nav_fg": "#e3e5e8", "nav_active_bg": "#5b9bff", "nav_active_fg": "#0b1320",
             "badges": {"Q": ("#2faa52", "#06210f"), "A": ("#5b9bff", "#06122b"),
                        "?": ("#e0a106", "#241900"), "D": ("#e2574d", "#2a0908")},
@@ -501,21 +518,30 @@ class FishingApp:
             style.configure("TLabelframe", background=t["bg"], bordercolor=t["border"])
             style.configure("TLabelframe.Label", background=t["bg"], foreground=t["accent"],
                             font=("Arial", max(9, fs - 2), "bold"))
-            style.configure("TButton", background=t["btn_bg"], foreground=t["fg"],
-                            bordercolor=t["border"], lightcolor=t["btn_light"], darkcolor=t["btn_dark"],
+            # Buttons keep ONE text colour and only shift the BACKGROUND shade
+            # between rest / hover / pressed, so contrast can never break in
+            # either theme. A light/dark bevel gives a subtle raised, tactile
+            # look; hover lifts the shade for clear feedback.
+            style.configure("TButton", background=t["btn_bg"], foreground=t["btn_fg"],
+                            bordercolor=t["btn_dark"], lightcolor=t["btn_light"], darkcolor=t["btn_dark"],
                             relief="raised", borderwidth=2, padding=(14, 9),
-                            font=("Arial", max(9, fs - 3)))
+                            font=("Arial", max(9, fs - 3)), focuscolor=t["accent"])
             style.map("TButton",
-                      background=[("pressed", t["accent"]), ("active", t["btn_hover"])],
-                      foreground=[("pressed", t["accent_fg"])],
-                      relief=[("pressed", "sunken")])
+                      background=[("disabled", t["bg"]), ("pressed", t["btn_pressed"]),
+                                  ("active", t["btn_hover"])],
+                      foreground=[("disabled", t["fg_muted"]), ("!disabled", t["btn_fg"])],
+                      relief=[("pressed", "sunken"), ("!pressed", "raised")])
+            # Primary actions: accent fill, white-ish text held constant across
+            # states; background darkens slightly on hover / press.
             style.configure("Accent.TButton", background=t["accent"], foreground=t["accent_fg"],
-                            lightcolor=t["accent"], darkcolor=t["accent"], relief="raised",
-                            borderwidth=2, padding=(16, 10), font=("Arial", max(9, fs - 2), "bold"))
+                            bordercolor=t["accent_pressed"], lightcolor=t["accent_hover"],
+                            darkcolor=t["accent_pressed"], relief="raised", borderwidth=2,
+                            padding=(16, 10), font=("Arial", max(9, fs - 2), "bold"))
             style.map("Accent.TButton",
-                      background=[("pressed", t["accent"]), ("active", t["accent"])],
-                      foreground=[("pressed", t["accent_fg"]), ("active", t["accent_fg"])],
-                      relief=[("pressed", "sunken")])
+                      background=[("disabled", t["border"]), ("pressed", t["accent_pressed"]),
+                                  ("active", t["accent_hover"])],
+                      foreground=[("disabled", t["fg_muted"]), ("!disabled", t["accent_fg"])],
+                      relief=[("pressed", "sunken"), ("!pressed", "raised")])
             style.configure("TCheckbutton", background=t["bg"], foreground=t["fg"])
             style.map("TCheckbutton", background=[("active", t["bg"])],
                       foreground=[("disabled", t["fg_muted"])])
@@ -611,9 +637,51 @@ class FishingApp:
                 "catch": L["nav_catch"], "rankings": L["nav_rankings"],
                 "settings": L["nav_settings"]}.get(name, "")
 
+    def _apply_window_icon(self):
+        """Set the window/dock icon. iconphoto works cross-platform (incl.
+        macOS, where iconbitmap('.ico') does nothing) from a PNG; iconbitmap
+        additionally drives the Windows taskbar icon. Falls back silently."""
+        png = None
+        for cand in ("logo.png", _resource_path("logo.png")):
+            if cand and os.path.exists(cand):
+                png = cand
+                break
+        if png:
+            try:
+                self._window_icon_img = tk.PhotoImage(file=png)
+                self.root.iconphoto(True, self._window_icon_img)
+            except Exception as e:
+                logging.info(f"iconphoto failed: {e}")
+        ico = None
+        for cand in ("logo.ico", _resource_path("logo.ico")):
+            if cand and os.path.exists(cand):
+                ico = cand
+                break
+        if ico:
+            try:
+                self.root.iconbitmap(ico)     # Windows taskbar
+            except tk.TclError:
+                pass
+
     def __init__(self, root):
         self.root = root
         try:
+            # Hide the window while we build it so the user never sees an empty
+            # dark frame flash before the UI appears; revealed at the end.
+            try:
+                self.root.withdraw()
+            except tk.TclError:
+                pass
+            # Anchor the working directory to the folder the program lives in,
+            # so ALL relative data (logo/watermark/icon, per-event subfolders,
+            # temp data) resolves there regardless of how the app was launched.
+            # This is what made things "just work" historically and makes
+            # branding + saved events persist across version updates (the user
+            # keeps one folder and only swaps the script).
+            try:
+                os.chdir(app_base_dir())
+            except Exception as e:
+                logging.warning(f"could not anchor working directory: {e}")
             self.data = load_data()
             # Language is an app-level preference stored in config.json so it
             # always reopens as set. Migrate a previously-used event-file
@@ -626,12 +694,20 @@ class FishingApp:
             CONFIG["lang"] = self.lang
             self.data["lang"] = self.lang
             self.root.title(LANGUAGES[self.lang]["title"])
+            self._apply_window_icon()
             try:
-                self.root.iconbitmap("logo.ico")
+                self.root.state('zoomed')        # Windows/Linux maximize
             except tk.TclError:
-                logging.warning("logo.ico not found, using default icon")
-            
-            self.root.state('zoomed')
+                try:
+                    self.root.attributes('-zoomed', True)   # some X11 WMs
+                except tk.TclError:
+                    # macOS: no 'zoomed' state — fill the screen manually.
+                    try:
+                        sw = self.root.winfo_screenwidth()
+                        sh = self.root.winfo_screenheight()
+                        self.root.geometry(f"{sw}x{sh}+0+0")
+                    except tk.TclError:
+                        pass
             self.root.minsize(1360, 768)
             screen_width = self.root.winfo_screenwidth()
             self.font_size = 12 if screen_width <= 1366 else 16
@@ -719,6 +795,13 @@ class FishingApp:
             # Enter the paged app directly. Language is already known (config),
             # so there is no separate welcome/language screen to pass through.
             self.build_main_ui()
+
+            # UI is fully built — reveal the window now (no empty-frame flash).
+            try:
+                self.root.update_idletasks()
+                self.root.deiconify()
+            except tk.TclError:
+                pass
         except Exception as e:
             logging.error(f"Initialization failed: {str(e)}")
             messagebox.showerror("Error", f"Failed to start application: {str(e)}")
@@ -980,7 +1063,9 @@ class FishingApp:
             before, after = cr.split("fescherfrenn@outlook.com", 1)
             ttk.Label(cr_holder, text=before, font=("Arial", self.font_size - 4)).pack(side=tk.LEFT)
             email_label = tk.Label(cr_holder, text="fescherfrenn@outlook.com",
-                                   font=("Arial", self.font_size - 4), foreground="blue", cursor="hand2")
+                                   font=("Arial", self.font_size - 4),
+                                   foreground=self.theme["accent"], background=self.theme["bg"],
+                                   bd=0, highlightthickness=0, cursor="hand2")
             email_label.pack(side=tk.LEFT)
             email_label.bind("<Button-1>", lambda e: webbrowser.open("mailto:fescherfrenn@outlook.com"))
             ttk.Label(cr_holder, text=after, font=("Arial", self.font_size - 4)).pack(side=tk.LEFT)
@@ -1001,33 +1086,49 @@ class FishingApp:
         self.create_tooltip(self.settings_btn, L["tooltip_settings"])
         self.create_tooltip(self.help_btn, L["tooltip_help"])
 
-        self.show_page(self.current_page if self.current_page in self.pages else "event")
+        self.show_page(self.current_page if self.current_page in self.pages else "participants")
 
     # ---- bottom navigation -------------------------------------------------
     def _build_nav_bar(self):
         for w in self.nav_bar.winfo_children():
             w.destroy()
         L = LANGUAGES[self.lang]
-        items = [("event", L["nav_event"]), ("participants", L["nav_participants"]),
+        # Event is intentionally NOT in the nav: the Event page is now reached
+        # via the tappable "Manage event" link in the header. The page itself is
+        # still built (see build_main_ui), so restoring the tab later is a
+        # one-line change. DECISION PENDING — keep header-only or restore tab.
+        items = [("participants", L["nav_participants"]),
                  ("catch", L["nav_catch"]), ("rankings", L["nav_rankings"]),
                  ("settings", L["nav_settings"])]
         self.nav_buttons = {}
         t = self.theme
         for i, (name, label) in enumerate(items):
             self.nav_bar.columnconfigure(i, weight=1)
-            b = tk.Button(self.nav_bar, text=label, font=("Arial", self.font_size, "bold"),
-                          relief="flat", bd=0, padx=8, pady=15,
-                          bg=t["nav_bg"], fg=t["nav_fg"],
-                          activebackground=t["nav_active_bg"], activeforeground=t["nav_active_fg"],
-                          highlightthickness=0, cursor="hand2",
-                          command=lambda n=name: self.show_page(n))
-            b.grid(row=0, column=i, sticky="ew", padx=2)
+            # tk.Label, NOT tk.Button: on macOS a native button ignores the
+            # background colour (painting white text onto the OS's light-grey
+            # button = unreadable). A Label honours bg/fg on every platform, so
+            # the active/inactive/hover colours render correctly.
+            b = tk.Label(self.nav_bar, text=label, font=("Arial", self.font_size, "bold"),
+                         bg=t["nav_bg"], fg=t["nav_fg"], padx=8, pady=15,
+                         anchor="center", cursor="hand2", relief="flat", bd=0,
+                         highlightthickness=0)
+            b.grid(row=0, column=i, sticky="nsew", padx=2)
+            b.bind("<Button-1>", lambda _e, n=name: self.show_page(n))
             self.nav_buttons[name] = b
+            # Hover feedback (colour lift only, no movement) on non-active tabs.
+            def _hover_in(_e, btn=b, nm=name):
+                if nm != self.current_page:
+                    btn.config(bg=t["btn_hover"])
+            def _hover_out(_e, btn=b, nm=name):
+                if nm != self.current_page:
+                    btn.config(bg=t["nav_bg"])
+            b.bind("<Enter>", _hover_in)
+            b.bind("<Leave>", _hover_out)
 
     def show_page(self, name):
         """Raise the named page and reflect the active tab in the nav bar."""
         if name not in self.pages:
-            name = "event"
+            name = "participants"
         self.current_page = name
         self.pages[name].tkraise()
         if getattr(self, "header_page_label", None) is not None:
@@ -1035,6 +1136,19 @@ class FishingApp:
                 self.header_page_label.config(text=self._page_display_name(name))
             except tk.TclError:
                 pass
+        # The event context (subtitle + "Manage event" link) is not relevant on
+        # the Settings & Tools page, which holds app-level, non-event settings.
+        show_event_ctx = (name != "settings")
+        for _attr in ("header_event_label", "header_manage_hint"):
+            w = getattr(self, _attr, None)
+            if w is not None:
+                try:
+                    if show_event_ctx:
+                        w.pack(side="left")
+                    else:
+                        w.pack_forget()
+                except tk.TclError:
+                    pass
         t = self.theme
         for n, b in self.nav_buttons.items():
             try:
@@ -1188,7 +1302,7 @@ class FishingApp:
         def ev_selected():
             sel = ev_tv.selection()
             if not sel:
-                messagebox.showinfo(L["manage_events_title"], L["events_select_row"])
+                self._notify(L["manage_events_title"], L["events_select_row"])
                 return None
             try:
                 return ev_state["events"][int(sel[0])]
@@ -1226,12 +1340,12 @@ class FishingApp:
                 if typed is None:
                     return
                 if typed.strip() != ev["name"]:
-                    messagebox.showinfo(L["events_delete"], L["events_del_name_mismatch"])
+                    self._notify(L["events_delete"], L["events_del_name_mismatch"])
                     return
             try:
                 import shutil
                 shutil.rmtree(ev["folder"])
-                messagebox.showinfo(L["manage_events_title"], L["events_del_done"].format(name=ev["name"]))
+                self._notify(L["manage_events_title"], L["events_del_done"].format(name=ev["name"]))
                 reload_list()
             except Exception as e:
                 logging.error(f"delete event failed: {e}")
@@ -1241,7 +1355,7 @@ class FishingApp:
         self.manage_events_btn = ttk.Button(ev_btns, text=L["events_open"], command=open_selected)
         self.manage_events_btn.pack(side="left", padx=3)
         ttk.Button(ev_btns, text=L["events_browse"], command=browse).pack(side="left", padx=3)
-        ttk.Button(ev_btns, text=L["events_delete"], command=delete_selected).pack(side="right", padx=3)
+        ttk.Button(ev_btns, text=L["events_delete"], command=delete_selected).pack(side="left", padx=3)
         reload_list()
 
     def open_event_manager(self):
@@ -1253,22 +1367,11 @@ class FishingApp:
         if self._raise_open_panel():
             return
         L = LANGUAGES[self.lang]
-        win = Toplevel(self.root)
+        win = self._dlg()
+        win.withdraw()                  # stay hidden until built + positioned
         win.title(L["nav_event"])
         win.transient(self.root)
-        win.update_idletasks()   # macOS: map before grabbing
-        win.grab_set()
-        self._center(win, 900, 660)
         self._register_panel(win)
-
-        container = ttk.Frame(win, padding=8)
-        container.pack(fill="both", expand=True)
-        # Build the same workspace here; this rebinds self.event_name etc. to
-        # these dialog widgets for as long as the dialog is open.
-        self._build_event_workspace(container)
-
-        btnbar = ttk.Frame(win, padding=(8, 0, 8, 8))
-        btnbar.pack(fill="x")
 
         def _close():
             try:
@@ -1276,8 +1379,27 @@ class FishingApp:
             finally:
                 # Restore the tab's widgets + header (and re-bind shared attrs).
                 self.build_main_ui()
-        ttk.Button(btnbar, text=L["close"], command=_close).pack(side="right")
         win.protocol("WM_DELETE_WINDOW", _close)
+
+        # Pack the button bar at the bottom FIRST so the expanding workspace
+        # above can never squeeze it off-screen (the bug that hid Close).
+        btnbar = ttk.Frame(win, padding=(8, 6, 8, 8))
+        btnbar.pack(side="bottom", fill="x")
+        ttk.Button(btnbar, text=L["close"], command=_close).pack(side="right")
+
+        container = ttk.Frame(win, padding=8)
+        container.pack(side="top", fill="both", expand=True)
+        # Build the same workspace here; this rebinds self.event_name etc. to
+        # these dialog widgets for as long as the dialog is open.
+        self._build_event_workspace(container)
+
+        self._center(win, 900, 660)
+        try:
+            win.deiconify()             # reveal only now, already in place
+            win.update_idletasks()
+            win.grab_set()
+        except tk.TclError:
+            pass
 
     # ---- page: Log Catch & Rankings (operating screen) -------------------
     def _build_page_catch(self, page):
@@ -1494,7 +1616,7 @@ class FishingApp:
         def need_selection(tv):
             sel = tv.selection()
             if not sel:
-                messagebox.showinfo(L["manage_participants"], L["select_row"])
+                self._notify(L["manage_participants"], L["select_row"])
                 return None
             return sel
 
@@ -1579,7 +1701,7 @@ class FishingApp:
                 refresh_all()
                 self.refresh_manche_view()
             elif len(sel) == 1:
-                messagebox.showinfo(L["manage_participants"],
+                self._notify(L["manage_participants"],
                                     L["already_in_manche"].format(name=sel[0]))
 
         def remove_from_manche():
@@ -1599,7 +1721,7 @@ class FishingApp:
 
         def suggest_finalists():
             if self.current_manche != "final":
-                messagebox.showinfo(L["manage_participants"], L["qual_only_final"])
+                self._notify(L["manage_participants"], L["qual_only_final"])
                 return
 
             def tie_resolver(round_key, names, slots):
@@ -1608,7 +1730,7 @@ class FishingApp:
             result = self.compute_qualifiers(tie_resolver=tie_resolver)
             qualified = result["qualified"]
             if not qualified:
-                messagebox.showinfo(L["manage_participants"], L["qual_none"])
+                self._notify(L["manage_participants"], L["qual_none"])
                 return
             sess = self.data["sessions"]["final"]
             added = 0
@@ -1620,7 +1742,7 @@ class FishingApp:
             self.update_event()
             refresh_all()
             self.refresh_manche_view()
-            messagebox.showinfo(L["manage_participants"], L["qual_done"].format(n=added))
+            self._notify(L["manage_participants"], L["qual_done"].format(n=added))
 
         self.manage_btn = ttk.Button(roster_btns, text=L["add_participant"], command=add_new)
         self.manage_btn.pack(side="left", padx=2)
@@ -1642,6 +1764,21 @@ class FishingApp:
         # --- report options strip (full width, above the two panels) ---
         settings_frame = ttk.LabelFrame(page, text=L["report_settings_label"], padding=5)
         settings_frame.grid(row=0, column=0, columnspan=2, sticky="ew", padx=4, pady=3)
+        # Round selector lives with the report options (it governs which round
+        # the report covers) and is synced with the Participants / Log Catch
+        # pages. Kept here, full-width, so it doesn't break the side-by-side
+        # alignment of the Reports and Invoices panels below.
+        rep_round_row = ttk.Frame(settings_frame)
+        rep_round_row.pack(anchor="w", fill="x", pady=(0, 4))
+        ttk.Label(rep_round_row, text=L["manche_label"],
+                  font=("Arial", self.font_size, "bold")).pack(side="left")
+        rep_round_combo = ttk.Combobox(rep_round_row, state="readonly",
+                                       values=session_display(self.lang),
+                                       font=("Arial", self.font_size), width=18)
+        rep_round_combo.set(key_to_display(self.lang, self.current_manche))
+        rep_round_combo.bind("<<ComboboxSelected>>", self.on_manche_changed)
+        rep_round_combo.pack(side="left", padx=6)
+        self._round_selectors.append(rep_round_combo)
         ttk.Label(settings_frame, text=f'\u2713 {L["chk_event_summary"]}',
                   font=("Arial", self.font_size - 2, "italic"), foreground="gray").pack(anchor="w", pady=2)
         ttk.Checkbutton(settings_frame, text=L["chk_individual"],
@@ -1748,7 +1885,7 @@ class FishingApp:
         def _inv_selected_index():
             sel = inv_tv.selection()
             if not sel:
-                messagebox.showinfo(L["invoices_btn"], L["select_row"])
+                self._notify(L["invoices_btn"], L["select_row"])
                 return None
             try:
                 return int(sel[0])
@@ -1836,15 +1973,10 @@ class FishingApp:
         # ---- Appearance (theme + language) ----
         g_appear = ttk.LabelFrame(page, text=L["settings_group_appearance"], padding=8)
         g_appear.grid(row=0, column=0, sticky="new", padx=4, pady=4)
-        row = ttk.Frame(g_appear)
-        row.pack(anchor="w", fill="x")
-        ttk.Label(row, text=f'{L["settings_theme_label"]}:', font=("Arial", self.font_size)).pack(side="left", padx=(0, 10))
-        self._theme_mode_var = tk.StringVar(value=CONFIG.get("theme_mode", "system"))
-        for mode, key in (("system", "theme_system"), ("light", "theme_light"), ("dark", "theme_dark")):
-            ttk.Radiobutton(row, text=L[key], value=mode, variable=self._theme_mode_var,
-                            command=lambda m=mode: self._on_theme_change(m)).pack(side="left", padx=4)
+        # Language first, then Theme, so the theme note below sits directly
+        # under the theme selector it describes.
         lang_row = ttk.Frame(g_appear)
-        lang_row.pack(anchor="w", fill="x", pady=(8, 0))
+        lang_row.pack(anchor="w", fill="x")
         ttk.Label(lang_row, text=f'{L["settings_lang_label"]}:', font=("Arial", self.font_size)).pack(side="left", padx=(0, 10))
         self._lang_display = {"English": "English", "French": "Français",
                               "German": "Deutsch", "Luxembourgish": "Lëtzebuergesch",
@@ -1857,9 +1989,17 @@ class FishingApp:
         self._lang_combo.bind("<<ComboboxSelected>>",
                               lambda e: self.set_language(self._lang_label_to_key.get(self._lang_combo.get(), "English")))
         self._lang_combo.pack(side="left")
+
+        row = ttk.Frame(g_appear)
+        row.pack(anchor="w", fill="x", pady=(8, 0))
+        ttk.Label(row, text=f'{L["settings_theme_label"]}:', font=("Arial", self.font_size)).pack(side="left", padx=(0, 10))
+        self._theme_mode_var = tk.StringVar(value=CONFIG.get("theme_mode", "system"))
+        for mode, key in (("system", "theme_system"), ("light", "theme_light"), ("dark", "theme_dark")):
+            ttk.Radiobutton(row, text=L[key], value=mode, variable=self._theme_mode_var,
+                            command=lambda m=mode: self._on_theme_change(m)).pack(side="left", padx=4)
         ttk.Label(g_appear, text=L["settings_theme_note"],
                   font=("Arial", max(8, self.font_size - 3)), foreground=self.theme["fg_muted"],
-                  wraplength=300, justify="left").pack(anchor="w", pady=(6, 0))
+                  wraplength=300, justify="left").pack(anchor="w", pady=(4, 0))
 
         # ---- Branding ----
         g_brand = ttk.LabelFrame(page, text=L["settings_group_branding"], padding=8)
@@ -1892,7 +2032,7 @@ class FishingApp:
                     return
                 if self._import_asset(which, src):
                     refresh_status(which)
-                    messagebox.showinfo("", L["asset_saved"].format(which=L[label_key]))
+                    self._notify("", L["asset_saved"].format(which=L[label_key]))
 
             def remove():
                 if not self._asset_present(which):
@@ -1900,7 +2040,7 @@ class FishingApp:
                 if messagebox.askyesno("", L["asset_remove_q"].format(which=L[label_key])):
                     if self._remove_asset(which):
                         refresh_status(which)
-                        messagebox.showinfo("", L["asset_removed"].format(which=L[label_key]))
+                        self._notify("", L["asset_removed"].format(which=L[label_key]))
             ttk.Button(bf, text=L["asset_upload"], command=upload).pack(side="left", padx=2)
             ttk.Button(bf, text=L["asset_remove"], command=remove).pack(side="left", padx=2)
             refresh_status(which)
@@ -2055,7 +2195,7 @@ class FishingApp:
         if save_config(new_cfg):
             CONFIG.clear()
             CONFIG.update(new_cfg)   # reflect saved values in memory for this session
-            messagebox.showinfo("", L["settings_saved"])
+            self._notify("", L["settings_saved"])
 
     def _apply_details_enabled_state(self):
         """Grey out / lock the length & type inputs when the event doesn't track them.
@@ -2134,11 +2274,17 @@ class FishingApp:
                 win = tk.Toplevel(widget)
                 win.wm_overrideredirect(True)
                 try:
+                    win.configure(bg=self.theme["border"])
+                except tk.TclError:
+                    pass
+                try:
                     win.wm_attributes("-topmost", True)
                 except tk.TclError:
                     pass
-                ttk.Label(win, text=text, background="lightyellow",
-                          relief="solid", borderwidth=1, padding=3).pack()
+                tk.Label(win, text=text, background=self.theme["surface"],
+                         foreground=self.theme["fg"], relief="solid", borderwidth=1,
+                         highlightbackground=self.theme["border"],
+                         padx=6, pady=3, font=("Arial", max(9, self.font_size - 3))).pack()
                 win.wm_geometry(f"+{x}+{y}")
                 state["win"] = win
             except tk.TclError:
@@ -2181,7 +2327,7 @@ class FishingApp:
             sections = HELP.get("English") or []
             fallback_used = True
 
-        win = Toplevel(self.root)
+        win = self._dlg()
         win.title(L["help"])
         win.transient(self.root)
         self._center(win, 900, 560)
@@ -2327,7 +2473,7 @@ class FishingApp:
             if self.catch_name is not None:
                 self.catch_name["values"] = self.catch_dropdown_values()
             self.update_event()
-            messagebox.showinfo("Success", L["saved"])
+            self._notify("Success", L["saved"])
         except ValueError:
             messagebox.showerror("Error", L["invalid_number"])
 
@@ -2970,7 +3116,7 @@ class FishingApp:
         self.update_event()  # lock event details once we touch the roster
         L = LANGUAGES[self.lang]
 
-        win = Toplevel(self.root)
+        win = self._dlg()
         win.title(L["manage_participants"])
         win.transient(self.root)
         win.update_idletasks()  # macOS: ensure window is mapped before grabbing
@@ -3044,7 +3190,7 @@ class FishingApp:
         def need_selection(tv):
             sel = tv.selection()
             if not sel:
-                messagebox.showinfo(L["manage_participants"], L["select_row"])
+                self._notify(L["manage_participants"], L["select_row"])
                 return None
             return sel
 
@@ -3102,13 +3248,13 @@ class FishingApp:
                 refresh_panes()
                 self.refresh_manche_view()
             elif len(sel) == 1:
-                messagebox.showinfo(L["manage_participants"],
+                self._notify(L["manage_participants"],
                                     L["already_in_manche"].format(name=sel[0]))
 
         def suggest_finalists():
             # Only meaningful when arranging the final's roster.
             if self.current_manche != "final":
-                messagebox.showinfo(L["manage_participants"], L["qual_only_final"])
+                self._notify(L["manage_participants"], L["qual_only_final"])
                 return
 
             def tie_resolver(round_key, names, slots):
@@ -3117,7 +3263,7 @@ class FishingApp:
             result = self.compute_qualifiers(tie_resolver=tie_resolver)
             qualified = result["qualified"]
             if not qualified:
-                messagebox.showinfo(L["manage_participants"], L["qual_none"])
+                self._notify(L["manage_participants"], L["qual_none"])
                 return
             sess = self.data["sessions"]["final"]
             added = 0
@@ -3129,7 +3275,7 @@ class FishingApp:
             self.update_event()
             refresh_panes()
             self.refresh_manche_view()
-            messagebox.showinfo(L["manage_participants"], L["qual_done"].format(n=added))
+            self._notify(L["manage_participants"], L["qual_done"].format(n=added))
 
         def remove_from_manche():
             sel = need_selection(manche_tv)
@@ -3161,7 +3307,7 @@ class FishingApp:
     # -- Add / Edit participant dialog -----------------------------
     def participant_form(self, parent, edit_name=None, on_done=None):
         L = LANGUAGES[self.lang]
-        dlg = Toplevel(parent)
+        dlg = self._dlg(parent)
         dlg.title(L["edit_participant"] if edit_name else L["add_participant"])
         dlg.transient(parent)
         dlg.grab_set()
@@ -3228,7 +3374,7 @@ class FishingApp:
                 self.data["participants"][new_name] = {
                     "id": next_id, "club": club, "category": category, "remark": remark}
             self.update_event()
-            messagebox.showinfo("Success", L["saved"])
+            self._notify("Success", L["saved"])
             if on_done:
                 on_done()
             dlg.destroy()
@@ -3247,7 +3393,7 @@ class FishingApp:
         if not self.check_event_details():
             return
         L = LANGUAGES[self.lang]
-        win = Toplevel(self.root)
+        win = self._dlg()
         win.title(f'{L["edit_catches"]} - {key_to_display(self.lang, self.current_manche)}')
         win.transient(self.root)
         win.update_idletasks()  # macOS: ensure window is mapped before grabbing
@@ -3295,7 +3441,7 @@ class FishingApp:
         def edit_selected():
             sel = tv.selection()
             if not sel:
-                messagebox.showinfo(L["edit_catch"], L["select_row"])
+                self._notify(L["edit_catch"], L["select_row"])
                 return
             name, idx = rowmap[sel[0]]
             self.catch_form(win, name, idx,
@@ -3304,7 +3450,7 @@ class FishingApp:
         def delete_selected():
             sel = tv.selection()
             if not sel:
-                messagebox.showinfo(L["delete"], L["select_row"])
+                self._notify(L["delete"], L["select_row"])
                 return
             name, idx = rowmap[sel[0]]
             if self.custom_dialog(L["delete"], L["confirm_delete_catch"],
@@ -3331,7 +3477,7 @@ class FishingApp:
             catch = self.data["sessions"][self.current_manche]["catches"][name][idx]
         except (KeyError, IndexError):
             return
-        dlg = Toplevel(parent)
+        dlg = self._dlg(parent)
         dlg.title(L["edit_catch"])
         dlg.transient(parent)
         dlg.grab_set()
@@ -3683,7 +3829,7 @@ class FishingApp:
         editing = edit_index is not None
         existing = self.data["invoices"][edit_index] if editing else None
 
-        dlg = Toplevel(self.root)
+        dlg = self._dlg()
         dlg.title(L["edit_invoice"] if editing else L["new_invoice"])
         dlg.transient(self.root)
         self._center(dlg, 540, 620)
@@ -4398,7 +4544,7 @@ class FishingApp:
         if self._raise_open_panel():
             return
         L = LANGUAGES[self.lang]
-        dlg = Toplevel(self.root)
+        dlg = self._dlg()
         dlg.title(L["settings_title"])
         dlg.transient(self.root)
         dlg.update_idletasks()  # macOS: ensure window is mapped before grabbing
@@ -4484,7 +4630,7 @@ class FishingApp:
                     return
                 if self._import_asset(which, src):
                     refresh_status(which)
-                    messagebox.showinfo("", L["asset_saved"].format(which=L[label_key]))
+                    self._notify("", L["asset_saved"].format(which=L[label_key]))
 
             def remove():
                 if not self._asset_present(which):
@@ -4492,7 +4638,7 @@ class FishingApp:
                 if messagebox.askyesno("", L["asset_remove_q"].format(which=L[label_key])):
                     if self._remove_asset(which):
                         refresh_status(which)
-                        messagebox.showinfo("", L["asset_removed"].format(which=L[label_key]))
+                        self._notify("", L["asset_removed"].format(which=L[label_key]))
 
             ttk.Button(bf, text=L["asset_upload"], command=upload).pack(side="left", padx=2)
             ttk.Button(bf, text=L["asset_remove"], command=remove).pack(side="left", padx=2)
@@ -4654,7 +4800,7 @@ class FishingApp:
             new_cfg["default_individual_reports"] = bool(def_individual.get())
             new_cfg["default_combined_ranking"] = bool(def_combined.get() and def_individual.get())
             if save_config(new_cfg):
-                messagebox.showinfo("", L["settings_saved"])
+                self._notify("", L["settings_saved"])
                 dlg.destroy()
 
         ttk.Button(btn_bar, text=L["settings_save"], command=do_save).pack(side="left", padx=4)
@@ -4685,7 +4831,7 @@ class FishingApp:
         sk = self.current_manche
         sess = self.data["sessions"][sk]
         if not sess["participants"]:
-            messagebox.showinfo("", L["no_manche_participants"])
+            self._notify("", L["no_manche_participants"])
             return
 
         try:
@@ -5016,20 +5162,138 @@ class FishingApp:
                 out.append((key_to_display(self.lang, sk), fn))
         return out
 
+    def _dlg(self, parent=None):
+        """Create a Toplevel whose background follows the app theme (not the OS
+        default window colour, which otherwise shows behind dialog text)."""
+        win = Toplevel(parent if parent is not None else self.root)
+        try:
+            win.configure(bg=self.theme["bg"])
+        except tk.TclError:
+            pass
+        return win
+
+    def _notify(self, title, message, kind="info"):
+        """Drop-in replacement for messagebox.showinfo: shows a brief, non-blocking
+        toast instead of a modal pop-up the user must dismiss. Title is ignored
+        (the short message carries the meaning). Used for purely informational
+        notices; questions/warnings/errors still use real dialogs."""
+        msg = message if message else (title or "")
+        self._toast(msg, kind)
+
+    def _toast(self, message, kind="info"):
+        """Small auto-fading banner near the top of the window, above everything.
+        Visible ~1.3s then fades out over ~0.5s (≈1.8s total). Non-blocking."""
+        try:
+            # Replace any toast already on screen + cancel its timers.
+            prev = getattr(self, "_toast_win", None)
+            if prev is not None:
+                try:
+                    prev.destroy()
+                except Exception:
+                    pass
+            for a in getattr(self, "_toast_afters", []):
+                try:
+                    self.root.after_cancel(a)
+                except Exception:
+                    pass
+            self._toast_afters = []
+            self._toast_win = None
+
+            t = self.theme
+            bar = {"info": t["accent"], "success": "#1e8e3e",
+                   "warning": "#f9ab00", "error": "#d93025"}.get(kind, t["accent"])
+            glyph = {"info": "\u2139", "success": "\u2713",
+                     "warning": "\u26a0", "error": "\u2715"}.get(kind, "\u2139")
+            win = tk.Toplevel(self.root)
+            win.wm_overrideredirect(True)
+            try:
+                win.configure(bg=t["btn_dark"])
+            except tk.TclError:
+                pass
+            try:
+                win.wm_attributes("-topmost", True)
+            except tk.TclError:
+                pass
+            # Bevel base (gives a subtle raised / 3D edge) -> bordered card.
+            outer = tk.Frame(win, bg=t["btn_dark"])
+            outer.pack()
+            card = tk.Frame(outer, bg=t["surface"], highlightbackground=t["border"],
+                            highlightthickness=1, bd=0)
+            card.pack(padx=2, pady=2)
+            tk.Frame(card, bg=bar, width=4).pack(side="left", fill="y")
+            tk.Label(card, text=glyph, bg=t["surface"], fg=bar,
+                     font=("Arial", max(11, self.font_size - 1), "bold"),
+                     padx=10, pady=9).pack(side="left")
+            tk.Label(card, text=message, bg=t["surface"], fg=t["fg"],
+                     font=("Arial", max(10, self.font_size - 3)), padx=2, pady=9,
+                     wraplength=420, justify="left").pack(side="left", padx=(0, 14))
+
+            win.update_idletasks()
+            try:
+                rx, ry = self.root.winfo_rootx(), self.root.winfo_rooty()
+                rw = self.root.winfo_width()
+                ww = win.winfo_reqwidth()
+                x = rx + max((rw - ww) // 2, 10)
+                y = ry + 64
+                win.wm_geometry(f"+{x}+{y}")
+            except tk.TclError:
+                pass
+            self._toast_win = win
+
+            try:
+                win.wm_attributes("-alpha", 1.0)
+                has_alpha = True
+            except tk.TclError:
+                has_alpha = False
+
+            hold_ms, fade_ms, steps = 1300, 500, 10
+
+            def _start_fade():
+                if not (win and win.winfo_exists()):
+                    return
+                if not has_alpha:
+                    self._destroy_toast(win)
+                    return
+                self._fade_toast(win, 1.0, fade_ms, steps)
+
+            self._toast_afters.append(self.root.after(hold_ms, _start_fade))
+        except Exception as e:
+            logging.info(f"toast failed ({e}); message was: {message}")
+
+    def _fade_toast(self, win, alpha, fade_ms, steps):
+        alpha -= 1.0 / steps
+        if alpha <= 0 or not (win and win.winfo_exists()):
+            self._destroy_toast(win)
+            return
+        try:
+            win.wm_attributes("-alpha", alpha)
+        except tk.TclError:
+            pass
+        self._toast_afters.append(
+            self.root.after(max(1, fade_ms // steps),
+                            lambda: self._fade_toast(win, alpha, fade_ms, steps)))
+
+    def _destroy_toast(self, win):
+        try:
+            if win is not None and win.winfo_exists():
+                win.destroy()
+        except Exception:
+            pass
+        if getattr(self, "_toast_win", None) is win:
+            self._toast_win = None
+
     def custom_dialog(self, title, message, buttons):
-        dialog = Toplevel(self.root)
+        dialog = self._dlg()
+        dialog.withdraw()              # stay hidden until built + positioned
         dialog.title(title)
         dialog.transient(self.root)
-        dialog.update_idletasks()  # macOS: ensure window is mapped before grabbing
-        dialog.grab_set()
         text_length = len(message)
         width = max(300, min(600, text_length * 8))
         height = max(150, 100 + (text_length // 50) * 30)
-        self._center(dialog, int(width), int(height))
 
         label = ttk.Label(dialog, text=message, wraplength=width-20, font=("Arial", self.font_size))
         label.pack(pady=10, padx=10)
-        
+
         result = [None]
         btn_frame = ttk.Frame(dialog)
         btn_frame.pack(pady=5, side=tk.BOTTOM)
@@ -5039,6 +5303,14 @@ class FishingApp:
             if btn_text == LANGUAGES[self.lang]["yes"]:
                 btn.focus_set()
                 dialog.bind("<Return>", lambda e, v=value: [result.__setitem__(0, v), dialog.destroy()])
+
+        self._center(dialog, int(width), int(height))
+        try:
+            dialog.deiconify()         # reveal only now, already in place
+            dialog.update_idletasks()
+            dialog.grab_set()
+        except tk.TclError:
+            pass
 
         dialog.wait_window()
         return result[0]
@@ -5060,7 +5332,7 @@ class FishingApp:
                 except Exception as e:
                     logging.error(f"reset_event temp file removal failed: {str(e)}")
             self.build_main_ui()
-            messagebox.showinfo(LANGUAGES[self.lang]["saved"], LANGUAGES[self.lang]["reset_success"])
+            self._notify(LANGUAGES[self.lang]["saved"], LANGUAGES[self.lang]["reset_success"])
 
     def export_event(self):
         # Export the CURRENT (open) event - a manual save/checkpoint available
@@ -5103,14 +5375,14 @@ class FishingApp:
             mustexist=True)
         if not dest_dir or os.path.abspath(dest_dir) == os.path.abspath(folder_name):
             # Cancelled, or chose the canonical folder itself - already saved.
-            messagebox.showinfo(LANGUAGES[self.lang]["saved"],
+            self._notify(LANGUAGES[self.lang]["saved"],
                                 LANGUAGES[self.lang]["export_success"].format(filename=os.path.abspath(canonical)))
             return
         dest = os.path.join(dest_dir, f"{folder_name}.json")
         try:
             with open(dest, 'w', encoding='utf-8') as file:
                 json.dump(self.data, file, indent=4, ensure_ascii=False)
-            messagebox.showinfo(LANGUAGES[self.lang]["saved"],
+            self._notify(LANGUAGES[self.lang]["saved"],
                                 LANGUAGES[self.lang]["export_success"].format(filename=os.path.abspath(dest)))
         except Exception as e:
             logging.error(f"export_event copy failed: {str(e)}")
@@ -5128,42 +5400,58 @@ class FishingApp:
         descending (most recent first).
         """
         events = []
+        seen = set()
         try:
-            base = os.getcwd()
-            for entry in os.listdir(base):
-                folder = os.path.join(base, entry)
-                if not os.path.isdir(folder):
-                    continue
-                data_file = os.path.join(folder, f"{entry}.json")
-                if not os.path.exists(data_file):
-                    continue
+            bases = []
+            for b in (os.getcwd(), app_base_dir()):
+                rb = os.path.realpath(b)
+                if rb not in seen:
+                    seen.add(rb)
+                    bases.append(b)
+            scan_dirs = bases
+            scanned_folders = set()
+            for base in scan_dirs:
                 try:
-                    with open(data_file, 'r', encoding='utf-8') as fh:
-                        d = json.load(fh)
-                    ev = d.get("event", {}) if isinstance(d, dict) else {}
-                    name = (ev.get("name") or entry).strip()
-                    date = (ev.get("date") or "").strip()
+                    entries = os.listdir(base)
+                except OSError:
+                    continue
+                for entry in entries:
+                    folder = os.path.join(base, entry)
+                    if not os.path.isdir(folder):
+                        continue
+                    real = os.path.realpath(folder)
+                    if real in scanned_folders:   # same event reachable via two bases
+                        continue
+                    data_file = os.path.join(folder, f"{entry}.json")
+                    if not os.path.exists(data_file):
+                        continue
+                    scanned_folders.add(real)
                     try:
-                        date_sort = datetime.strptime(date, "%d/%m/%Y")
-                    except ValueError:
-                        date_sort = datetime.min
-                    invoices = d.get("invoices", []) if isinstance(d, dict) else []
-                    inv_count = len(invoices) if isinstance(invoices, list) else 0
-                    # Folder size + file count (recursive).
-                    total_bytes, file_count = 0, 0
-                    for root, _dirs, files in os.walk(folder):
-                        for f in files:
-                            file_count += 1
-                            try:
-                                total_bytes += os.path.getsize(os.path.join(root, f))
-                            except OSError:
-                                pass
-                    events.append({"path": data_file, "folder": folder, "name": name,
-                                   "date": date, "date_sort": date_sort,
-                                   "invoices": inv_count, "bytes": total_bytes,
-                                   "files": file_count})
-                except Exception as e:
-                    logging.error(f"scan event {data_file} failed: {e}")
+                        with open(data_file, 'r', encoding='utf-8') as fh:
+                            d = json.load(fh)
+                        ev = d.get("event", {}) if isinstance(d, dict) else {}
+                        name = (ev.get("name") or entry).strip()
+                        date = (ev.get("date") or "").strip()
+                        try:
+                            date_sort = datetime.strptime(date, "%d/%m/%Y")
+                        except ValueError:
+                            date_sort = datetime.min
+                        invoices = d.get("invoices", []) if isinstance(d, dict) else []
+                        inv_count = len(invoices) if isinstance(invoices, list) else 0
+                        total_bytes, file_count = 0, 0
+                        for root, _dirs, files in os.walk(folder):
+                            for f in files:
+                                file_count += 1
+                                try:
+                                    total_bytes += os.path.getsize(os.path.join(root, f))
+                                except OSError:
+                                    pass
+                        events.append({"path": data_file, "folder": folder, "name": name,
+                                       "date": date, "date_sort": date_sort,
+                                       "invoices": inv_count, "bytes": total_bytes,
+                                       "files": file_count})
+                    except Exception as e:
+                        logging.error(f"scan event {data_file} failed: {e}")
         except Exception as e:
             logging.error(f"_scan_local_events failed: {e}")
         events.sort(key=lambda e: e["date_sort"], reverse=True)
@@ -5180,7 +5468,7 @@ class FishingApp:
     def _prompt_text(self, parent, title, message):
         """Small modal asking for a line of text. Returns the string or None."""
         L = LANGUAGES[self.lang]
-        top = Toplevel(parent)
+        top = self._dlg(parent)
         top.title(title)
         top.transient(parent)
         top.update_idletasks()
@@ -5222,7 +5510,7 @@ class FishingApp:
         except Exception as e:
             logging.error(f"flush current event before manage panel failed: {e}")
 
-        win = Toplevel(self.root)
+        win = self._dlg()
         win.title(L["manage_events_title"])
         win.transient(self.root)
         win.update_idletasks()
@@ -5266,7 +5554,7 @@ class FishingApp:
         def selected():
             sel = tv.selection()
             if not sel:
-                messagebox.showinfo(L["manage_events_title"], L["events_select_row"])
+                self._notify(L["manage_events_title"], L["events_select_row"])
                 return None
             try:
                 return state["events"][int(sel[0])]
@@ -5310,12 +5598,12 @@ class FishingApp:
                 if typed is None:
                     return
                 if typed.strip() != ev["name"]:
-                    messagebox.showinfo(L["events_delete"], L["events_del_name_mismatch"])
+                    self._notify(L["events_delete"], L["events_del_name_mismatch"])
                     return
             try:
                 import shutil
                 shutil.rmtree(ev["folder"])
-                messagebox.showinfo(L["manage_events_title"], L["events_del_done"].format(name=ev["name"]))
+                self._notify(L["manage_events_title"], L["events_del_done"].format(name=ev["name"]))
                 reload_list()
             except Exception as e:
                 logging.error(f"delete event failed: {e}")
@@ -5339,7 +5627,7 @@ class FishingApp:
         self.data = migrate_data(imported_data)
         self.root.title(LANGUAGES[self.lang]["title"])
         self.build_main_ui()
-        messagebox.showinfo(LANGUAGES[self.lang]["saved"],
+        self._notify(LANGUAGES[self.lang]["saved"],
                             LANGUAGES[self.lang]["import_success"])
 
     def _browse_import(self):
@@ -5371,7 +5659,7 @@ class FishingApp:
             init = datetime.strptime((initial_str or "").strip(), "%d/%m/%Y")
         except (ValueError, TypeError):
             init = datetime.now()
-        top = Toplevel(parent)
+        top = self._dlg(parent)
         top.title(L["inv_pick_date"])
         top.transient(parent)
         top.update_idletasks()
@@ -5399,7 +5687,7 @@ class FishingApp:
         `names` to proceed to the final. Returns the chosen list, or [] if
         cancelled (cancel leaves those final slots unfilled)."""
         L = LANGUAGES[self.lang]
-        top = Toplevel(parent)
+        top = self._dlg(parent)
         top.title(L["qual_tie_title"])
         top.transient(parent)
         top.update_idletasks()
